@@ -28,6 +28,15 @@ npm run test        # Vitest (unit) — desde la sesión 6
 npm run test:e2e    # Playwright (E2E) — desde la sesión 6
 ```
 
+Base de datos (Supabase CLI, requiere Docker corriendo):
+
+```bash
+supabase start                    # levanta el stack local (Postgres + servicios)
+supabase stop                     # lo detiene
+supabase db reset                 # reconstruye desde cero: migrations/ + seed.sql
+supabase migration new <nombre>   # crea el siguiente archivo de migración con timestamp
+```
+
 ## Arquitectura por capas
 
 ```
@@ -72,6 +81,9 @@ Reglas de independencia (aplican en todas las sesiones):
 Desde la sesión 2, `supabase/migrations/` es la ÚNICA fuente de verdad del
 esquema. `supabase/schema.sql` y `supabase/policies.sql` son copias de
 referencia legibles, generadas a partir de las migraciones — nunca al revés.
+La arquitectura completa (capas, modelo relacional, decisiones de diseño,
+políticas RLS en lenguaje de negocio) está documentada en
+[`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md).
 
 ## Regla de sesiones
 
