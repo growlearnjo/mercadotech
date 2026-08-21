@@ -5,6 +5,11 @@
 -- concatenando esas migraciones cada vez que cambian — nunca se
 -- edita a mano ni se usa para aplicar cambios a la base de datos.
 -- Generado: Fase 2.2 de MercadoTech_sesion2.md.
+--
+-- Nota (Fase 2.4): los buckets de Storage (product-images, avatars) y sus
+-- políticas sobre storage.objects NO están en este archivo — al ser
+-- políticas de acceso, no esquema de tablas de dominio, viven en
+-- supabase/policies.sql junto con el resto de las políticas RLS.
 -- ============================================================
 
 -- ================================================================
