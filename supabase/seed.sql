@@ -7,9 +7,13 @@
 -- sesión 6 (estos 6 usuarios son los usuarios de prueba).
 --
 -- Contraseña de laboratorio para los 6 usuarios: MercadoTech123!
--- Se guarda con `crypt(..., gen_salt('bf'))` (pgcrypto, ya habilitado en la
--- Fase 2.2) — un hash bcrypt real que GoTrue acepta, no un placeholder: los
--- 6 usuarios pueden iniciar sesión de verdad desde la sesión 3 en adelante.
+-- Se guarda con `extensions.crypt(..., extensions.gen_salt('bf'))` (pgcrypto,
+-- ya habilitado en la Fase 2.2) — un hash bcrypt real que GoTrue acepta, no
+-- un placeholder: los 6 usuarios pueden iniciar sesión de verdad desde la
+-- sesión 3 en adelante. Calificado con el schema `extensions` porque en
+-- Supabase hosted pgcrypto se instala ahí (no en `public` como a veces
+-- ocurre en el stack local), y el search_path de la sesión de seed no lo
+-- incluye por defecto.
 --
 -- Convención de UUIDs fijos por prefijo (para poder referenciarlos en tests
 -- futuros sin tener que consultarlos primero). Solo se fija el id de las
@@ -43,32 +47,32 @@ insert into auth.users (
 ) values
   ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000001',
    'authenticated', 'authenticated', 'buyer1@mercadotech.test',
-   crypt('MercadoTech123!', gen_salt('bf')), now(), now(),
+   extensions.crypt('MercadoTech123!', extensions.gen_salt('bf')), now(), now(),
    '{"provider":"email","providers":["email"]}', '{"full_name":"María Fernanda Quispe"}',
    now(), now(), '', '', '', ''),
   ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000002',
    'authenticated', 'authenticated', 'buyer2@mercadotech.test',
-   crypt('MercadoTech123!', gen_salt('bf')), now(), now(),
+   extensions.crypt('MercadoTech123!', extensions.gen_salt('bf')), now(), now(),
    '{"provider":"email","providers":["email"]}', '{"full_name":"Jorge Luis Ramírez"}',
    now(), now(), '', '', '', ''),
   ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000003',
    'authenticated', 'authenticated', 'buyer3@mercadotech.test',
-   crypt('MercadoTech123!', gen_salt('bf')), now(), now(),
+   extensions.crypt('MercadoTech123!', extensions.gen_salt('bf')), now(), now(),
    '{"provider":"email","providers":["email"]}', '{"full_name":"Ana Lucía Torres"}',
    now(), now(), '', '', '', ''),
   ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000004',
    'authenticated', 'authenticated', 'seller1@mercadotech.test',
-   crypt('MercadoTech123!', gen_salt('bf')), now(), now(),
+   extensions.crypt('MercadoTech123!', extensions.gen_salt('bf')), now(), now(),
    '{"provider":"email","providers":["email"]}', '{"full_name":"TecnoStore Perú"}',
    now(), now(), '', '', '', ''),
   ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000005',
    'authenticated', 'authenticated', 'seller2@mercadotech.test',
-   crypt('MercadoTech123!', gen_salt('bf')), now(), now(),
+   extensions.crypt('MercadoTech123!', extensions.gen_salt('bf')), now(), now(),
    '{"provider":"email","providers":["email"]}', '{"full_name":"GamerZone Lima"}',
    now(), now(), '', '', '', ''),
   ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-000000000006',
    'authenticated', 'authenticated', 'admin@mercadotech.test',
-   crypt('MercadoTech123!', gen_salt('bf')), now(), now(),
+   extensions.crypt('MercadoTech123!', extensions.gen_salt('bf')), now(), now(),
    '{"provider":"email","providers":["email"]}', '{"full_name":"Soporte MercadoTech"}',
    now(), now(), '', '', '', '');
 
