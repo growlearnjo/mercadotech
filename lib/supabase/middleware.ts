@@ -1,6 +1,31 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+/**
+ * Rutas que exigen sesión.
+ *
+ * Deliberadamente NO incluye `/producto` ni `/categoria` ni `/buscar`: el
+ * catálogo y el detalle son públicos por spec. Protegerlos expulsaría a
+ * `/login` a quien llega desde un enlace compartido o desde un buscador, y
+ * además contradiría las políticas RLS, que ya permiten leer los productos
+ * activos de forma anónima.
+ *
+ * Las acciones dentro del detalle (preguntar, favorito, agregar al carrito) no
+ * se cubren aquí: se muestran y redirigen al hacer clic (regla de la spec).
+ */
+const PROTECTED_PREFIXES = [
+  "/carrito",
+  "/pedidos",
+  "/favoritos",
+  "/vendedor",
+] as const;
+
+function requiresSession(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(prefix + "/"),
+  );
+}
+
 // Patrón oficial de @supabase/ssr: refresca el token de sesión en cada
 // request y lo propaga tanto a la request entrante como a la respuesta.
 export async function updateSession(request: NextRequest) {
@@ -33,7 +58,22 @@ export async function updateSession(request: NextRequest) {
   });
 
   // No eliminar: refresca el token antes de que las Server Components lo lean.
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Guard de sesión. Se resuelve aquí y no en el cliente para que no haya
+  // parpadeo: quien no tiene sesión nunca llega a ver la pantalla protegida.
+  const { pathname, search } = request.nextUrl;
+  if (!user && requiresSession(pathname)) {
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.search = "";
+    // Se conserva la query original para devolver al usuario exactamente
+    // donde estaba tras iniciar sesión.
+    loginUrl.searchParams.set("redirectTo", pathname + search);
+    return NextResponse.redirect(loginUrl);
+  }
 
   return supabaseResponse;
 }

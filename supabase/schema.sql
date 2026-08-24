@@ -58,9 +58,12 @@ alter table public.profiles enable row level security;
 -- (aún sin políticas); set search_path fijo por seguridad (evita hijacking
 -- vía search_path en funciones SECURITY DEFINER).
 --
--- Supuesto: no hay formulario de registro hasta la sesión 3, así que
--- display_name se inicializa con el prefijo del email; el usuario lo edita
--- después desde su perfil.
+-- Versión vigente: la de la Fase 3.3
+-- (20260824194558_handle_new_user_metadata.sql), que lee display_name y role
+-- de raw_user_meta_data. El role se filtra con lista blanca buyer|seller
+-- porque ese metadato lo controla el cliente; registrarse como admin es
+-- imposible por construcción. Es el único punto donde `role` puede fijarse:
+-- después, protect_profile_role bloquea que el usuario cambie el suyo.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -68,8 +71,19 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, display_name)
-  values (new.id, split_part(new.email, '@', 1));
+  insert into public.profiles (id, display_name, role)
+  values (
+    new.id,
+    coalesce(
+      nullif(new.raw_user_meta_data->>'display_name', ''),
+      split_part(new.email, '@', 1)
+    ),
+    case
+      when new.raw_user_meta_data->>'role' in ('buyer', 'seller')
+        then new.raw_user_meta_data->>'role'
+      else 'buyer'
+    end
+  );
   return new;
 end;
 $$;
