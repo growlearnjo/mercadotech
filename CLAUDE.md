@@ -147,6 +147,7 @@ Requieren sesión (lo impone `lib/supabase/middleware.ts`): `/carrito`,
 * Sesión 3: completa (Fases 3.1–3.8). MVP funcional.
 * Siguiente: sesión 4 (RAG, `/soporte`, Route Handlers de `app/api/v1/`).
 
+Mapa de carpetas: [`docs/ESTRUCTURA.md`](docs/ESTRUCTURA.md).
 Detalle de decisiones y problemas: [`docs/BITACORA.md`](docs/BITACORA.md).
 Checklist de calidad: [`docs/SESION3_CHECKLIST.md`](docs/SESION3_CHECKLIST.md).
 
