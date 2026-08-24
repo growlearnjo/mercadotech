@@ -24,3 +24,6 @@ test-results/
 # Supabase local
 supabase/.branches/
 supabase/.temp/
+
+# Imágenes de muestra descargadas por scripts/seed-images.mjs (regenerables)
+supabase/seed-images/
