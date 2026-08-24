@@ -1,0 +1,331 @@
+# Bitácora de MercadoTech
+
+Registro acumulativo del proyecto, la sesión más reciente primero. Cada
+entrada dice qué se construyó, qué se decidió y por qué, con qué se tropezó y
+qué se dejó fuera a propósito.
+
+---
+
+# Sesión 3 — UI Inteligente y Frontend Multimodal (2026-08-24)
+
+MVP funcional completo del marketplace sobre la infraestructura de la sesión 2:
+14 rutas, autenticación con roles, catálogo con filtros, ficha de producto con
+Q&A y reseñas, carrito con checkout simulado y panel del vendedor con dos
+interacciones drag & drop.
+
+**Volumen:** `git diff --stat fb419eb..HEAD` → 131 archivos, +13 739 / −475.
+
+## Prompt 0 — Provisión del entorno (commit `5b9f08d`)
+
+**Construido:** stack Supabase local operativo, `.env.local` verificado contra
+`supabase status -o env`, 16 componentes shadcn, `lucide-react` + `@dnd-kit/*`,
+script `db:types`.
+
+**Problema 1:** Docker Desktop no estaba corriendo y, al arrancarlo, el stack
+quedó a medias (9 servicios sanos, `edge_runtime` en `Exited (255)`). Se
+resolvió con `supabase stop` → `supabase start`, que es la limpieza que la
+propia spec anticipaba.
+
+**Problema 2:** `shadcn add` terminó en ✔ pero **no instaló los peers** del
+estilo `base-nova`: dejó un `node_modules/@base-ui` vacío y `type-check`
+fallaba con 14 errores `TS2307`. Se instalaron a mano `@base-ui/react` y
+`class-variance-authority`.
+
+**Problema 3:** `npm run lint` daba 154 errores provenientes de
+`supabase/.temp/start-secrets/…`, un bundle minificado que genera el CLI. Está
+en `.gitignore`, pero ESLint 9 flat config no lo lee; se añadió
+`supabase/.temp/**` a los `ignores`.
+
+**Fuera de alcance:** actualizar el CLI de Supabase (2.111 → 2.115) y las 3
+vulnerabilidades high de `postcss`/`sharp`, transitivas de `next@15.5.23`,
+cuyo arreglo exige Next 16 (breaking).
+
+## Fase 3.1 — Tipos, sistema visual y componentes base (commit `33b1654`)
+
+**Construido:** `types/database.ts` generado + 5 archivos de tipos de dominio,
+tokens de tema claro/oscuro, `images.remotePatterns`, `formatPrice`, y los 8
+componentes de `components/shared/`.
+
+**Decisión — la paleta salió del mockup, no de la imaginación.** El PDF
+`diseño_visual_platform.pdf` es un mockup rasterizado (2 páginas, sin texto
+extraíble). Se extrajeron sus 19 imágenes embebidas y se **muestrearon los
+colores por píxel**: primario `#1868E8`, navy de cabecera `#081838`, verde de
+envío `#0FA06B`, óxido de descuento `#B04820`, fondo `#F8F8F9`. Convertidos a
+OKLCH, que es el espacio que ya usaban los tokens de shadcn.
+
+**Decisión — la spec manda en contenido, el mockup en forma.** El mockup está
+marcado como "NODO." y usa `$` con dirección de CDMX. Se conservó la marca
+*MercadoTech* y la moneda `S/` con `es-PE`, que es lo que fija la spec; del
+mockup se tomaron disposición y color.
+
+**Problema 1 — todo el sitio renderizaba en Times New Roman.** `@theme inline`
+traía `--font-sans: var(--font-sans)`, una autorreferencia cíclica que
+invalida la variable; además `layout.tsx` define `--font-geist-sans` sobre
+`<body>` mientras la fuente se aplicaba en `<html>`. Se apuntó la variable a
+la real y se movió `font-sans` a `body`.
+
+**Problema 2 — contraste por debajo de AA.** El verde del mockup es *texto*
+verde sobre blanco; usado como relleno de badge con texto blanco daba 3.22:1
+(AA exige 4.5:1 a 12 px). Se oscureció `--success` de L .624 a .530 → 4.61:1,
+y `--muted-foreground` de L .551 a .530 → 4.73:1 sobre `--muted`.
+
+**Problema 3 — `ConditionBadge` se quedaba anclado al color del tema
+anterior.** Aislado por búsqueda binaria sobre las 31 clases del `Badge`: el
+culpable es `transition-all`, que al animar un `background-color` derivado de
+una variable CSS deja el valor computado congelado en Chrome. Se añadió
+`transition-none` en el componente propio, sin tocar `components/ui/badge.tsx`.
+
+**Fuera de alcance:** estrellas en ámbar — el mockup muestra la calificación en
+el azul de marca y se respetó.
+
+## Fase 3.2 — Layouts, navegación y mapa de rutas (commit `27ee27b`)
+
+**Construido:** layout raíz real (`lang="es"`, metadata, `<Toaster />`), los
+tres layouts de grupo, 9 componentes de `components/layout/` y las 14 rutas
+del mapa como placeholders.
+
+**Decisión — navbar de tres pisos**, como el mockup: banda navy fina
+(decorativa), barra blanca con marca + buscador ancho + cuenta/carrito, y fila
+de categorías. La banda usa un par de tokens propio (`--band` /
+`--band-foreground`) en vez de un color literal.
+
+**Decisión — `components/layout/Brand.tsx`**, que no estaba en la tabla de la
+spec: el wordmark aparece en tres sitios (navbar, cabecera del vendedor,
+layout de auth) y triplicar el marcado garantizaba desincronización.
+
+**Problema:** tras borrar `app/page.tsx` (colisionaba con `(shop)/page.tsx` en
+`/`), `type-check` falló por un `.next/types/validator.ts` obsoleto. Se
+resolvió con `rm -rf .next`.
+
+**Fuera de alcance:** "Soporte" no aparece en el menú; su ruta llega en la
+sesión 4.
+
+## Fase 3.3 — Autenticación (commit `3d25934`)
+
+**Construido:** migración `20260824194558_handle_new_user_metadata.sql`,
+`lib/validators/auth.ts`, `services/auth.service.ts`, `hooks/useAuth.ts`,
+`LoginForm`/`RegisterForm`, `/login` y `/register`, y el guard de sesión en
+`lib/supabase/middleware.ts`.
+
+**Decisión — el rol se fija en el trigger de alta.** Sin la migración,
+registrarse como vendedor era imposible: `handle_new_user` omitía `role` (caía
+al default `buyer`) y corregirlo después con un `UPDATE` lo bloquea
+`protect_profile_role`. El único instante posible es el `INSERT` del trigger,
+que corre `SECURITY DEFINER`. El `role` se filtra con lista blanca de dos
+valores: `'admin'` manipulado degrada a `buyer`, verificado contra la API.
+
+**Decisión — `/producto` NO se protege.** El detalle es público por spec;
+protegerlo expulsaría a `/login` a quien llega desde un enlace compartido y
+contradiría las políticas RLS, que ya permiten leer productos activos de forma
+anónima.
+
+**Problema:** el guard de rol del panel parpadeaba antes de cargar el profile
+→ se muestra `LoadingState` mientras `initializing` es true, y solo entonces
+se decide.
+
+**Fuera de alcance:** confirmación de correo (en local `enable_confirmations =
+false`; el código contempla el caso `session === null`) y recuperación de
+contraseña.
+
+## Fase 3.4 — Catálogo de productos (commit `637d521`)
+
+**Construido:** `lib/constants/catalog.ts`, tres services
+(`storage`, `category`, `product`), `useCategories` y `useProducts`, cuatro
+componentes de `components/catalog/` y las páginas `/`, `/categoria/[slug]` y
+`/buscar`.
+
+**Decisión — filtros en la URL.** El estado se puede compartir por enlace,
+sobrevive a F5 y el botón atrás deshace un filtro en vez de sacarte del
+catálogo.
+
+**Decisión — `categories!inner` en el select.** `category_id` es NOT NULL, así
+que el inner join nunca descarta filas y permite filtrar por slug en la MISMA
+consulta, sin un viaje extra para resolver slug → id.
+
+**Problema 1 — el rango de precio borraba los demás filtros.** `commitPrice`
+llamaba a `onChange` dos veces seguidas y ambas partían del mismo snapshot de
+`searchParams`: el segundo `router.push` pisaba al primero. Se cambió el
+contrato de `setFilter(clave, valor)` a **`setFilters(parcial)`**, que escribe
+todo en una sola pasada. Solo apareció al teclear con teclado real.
+
+**Problema 2 — violación de capas.** `CatalogView` importaba `useProducts`.
+Ahora es puro y cada página conecta el hook; el tipo `CatalogFilters` se movió
+de `hooks/useProducts` a `lib/constants/catalog.ts`.
+
+**Problema 3 — tres errores de Base UI en consola**, heredados de 3.2/3.3:
+`Button`/`SheetClose`/`DropdownMenuItem` renderizando `<a>` sin
+`nativeButton={false}`, y una excepción no capturada
+(`MenuGroupContext is missing`) por un `DropdownMenuLabel` fuera de
+`DropdownMenuGroup`.
+
+**Fuera de alcance:** búsqueda semántica. El `ilike` sobre `title`/`brand` es
+provisional y está marcado como tal en el código.
+
+## Fase 3.5 — Detalle, preguntas, reseñas y favoritos (commit `781607d`)
+
+**Construido:** `question`/`review`/`favorite` services, `registerView`, cinco
+hooks, cinco componentes de `components/product/`, `/producto/[id]` y
+`/favoritos`.
+
+**Decisión — sin nombres de otros usuarios.** `profiles` solo es legible por
+su dueño o un admin, así que las preguntas muestran "Usuario" y las reseñas
+"Comprador verificado". Mostrar nombres exigiría una vista `public_profiles`
+(migración nueva), fuera de alcance.
+
+**Decisión — `canReview` es defensa en profundidad.** La RLS ya cruza
+`order_id` con un pedido `entregado` del comprador; el hook comprueba lo mismo
+antes para no ofrecer un formulario que va a fallar.
+
+**Fuera de alcance:** el botón "Agregar al carrito" quedó cableado a un
+callback provisional, que la 3.6 sustituyó.
+
+## Fase 3.6 — Carrito, checkout simulado y pedidos (commit `12270c6`)
+
+**Construido:** `lib/constants/orders.ts`, `cart` y `order` services, `useCart`
+y `useOrders`, componentes de `components/cart/` y `components/orders/`, y las
+páginas `/carrito`, `/pedidos` y `/pedidos/[id]`.
+
+**Decisión — el carrito no guarda precios.** Guarda producto + cantidad; el
+precio que vale es el actual, y solo se congela como snapshot dentro del RPC.
+Así nadie "reserva" un precio viejo dejando el carrito abierto.
+
+**Decisión — el error del RPC se propaga tal cual.** El mensaje de Postgres ya
+nombra el producto que falló (`Stock insuficiente para "X": disponible 0,
+solicitado 1`, verificado); reescribirlo perdería esa información.
+
+**Problema — el contador del navbar no se actualizaba al agregar.** Cada
+`useCart()` creaba su propio estado, así que el layout no se enteraba de lo
+que hacía la ficha de producto. Se convirtió `useCart` en un store a nivel de
+módulo con `useSyncExternalStore`: mismo API del hook, todos los consumidores
+sincronizados, sin envolver la app en un provider.
+
+**Fuera de alcance (decisión 11):** cancelar un pedido **no repone stock** — no
+hay trigger para ello. El diálogo de confirmación lo advierte.
+
+## Fase 3.7 — Panel del vendedor con drag & drop (commit `85b9fe3`)
+
+**Construido:** `lib/constants/product.ts`, `lib/validators/product.ts`,
+`seller.service`, ampliación de `storage.service`, tres hooks, seis
+componentes de `components/seller/` y las cuatro páginas del panel.
+
+**Decisión — alta en dos pasos (decisión 12).** El path de Storage incluye el
+`product_id`, así que en modo alta no se puede subir nada antes de crear el
+producto: el reorden es local (`URL.createObjectURL`) y todo se sube tras el
+`createProduct`. En modo edición cada cambio se persiste al momento.
+
+**Decisión — las transiciones del kanban viven en el hook.** La RLS permite al
+vendedor poner `pagado`/`enviado`/`entregado` pero **no valida el orden**
+(aceptaría `entregado → pagado`). `useSellerOrders` rechaza cualquier salto
+que no sea un paso adelante en `ORDER_STATUS_FLOW`.
+
+**Decisión — la columna "Cancelado" es de solo lectura.** La RLS no deja al
+vendedor cancelar; sus tarjetas no se arrastran y la columna no acepta drops.
+
+**Problema — violación de capas.** `OrdersKanban` y `OrderKanbanCard`
+importaban el tipo `SellerOrder` desde `services/`. Se movió a
+`types/order.ts`.
+
+**Fuera de alcance:** en un pedido multi-vendedor, mover la tarjeta cambia el
+estado del pedido COMPLETO, porque el estado vive en `orders` y no en
+`order_items`. Resolverlo exige cambio de esquema. Está comentado en el
+service.
+
+### Imágenes de muestra (mismo commit)
+
+El seed crea las 35 filas de `product_images` pero **no los archivos**, así que
+el catálogo se veía entero con placeholders. Se añadió
+`scripts/seed-images.mjs` (`npm run db:images`), que descarga imágenes de
+**Lorem Picsum** —fotos de Unsplash bajo licencia que permite este uso— y las
+sube a Storage. Son fotos genéricas, no del producto real: las fotos de
+producto de una tienda están protegidas por copyright.
+
+Dos tropiezos: `service_role` no tiene GRANT de `SELECT` sobre
+`public.product_images` (los GRANTs de la 2.3 son para anon/authenticated), así
+que las rutas se leen de un manifiesto generado con psql en vez de por REST; y
+picsum devuelve 404 si el `seed` lleva barras, incluso codificadas, por lo que
+se usa un hash SHA-1 corto de la ruta (determinista: reejecutar da la misma
+imagen).
+
+## Fase 3.8 — Responsive, accesibilidad y estados (commit `c3a196a`)
+
+**Construido:** `docs/SESION3_CHECKLIST.md` con la tabla por pantalla, las
+mediciones de contraste y la evidencia de los dos greps de capas.
+
+**Corregido para que los greps dieran vacío:** `useAuth` importaba
+`lib/supabase/client` para suscribirse a `onAuthStateChange` → la suscripción
+se movió a `auth.service.ts`, que ahora expone `onAuthStateChange(callback)`.
+
+**Limpieza:** `app/dev/ui/page.tsx` eliminado; sin placeholders "Próximamente".
+
+---
+
+## Criterios de aceptación de la sesión
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| 14 rutas del mapa responden | ✅ | todas 200 (o 307 a `/login` si son protegidas) |
+| Registro con elección de rol | ✅ | `profiles.role = 'seller'`; `'admin'` manipulado → `buyer` |
+| Rutas protegidas sin parpadeo | ✅ | middleware devuelve 307 con `redirectTo` |
+| Catálogo con datos reales | ✅ | 14 activos en 2 páginas; 12 cards con imagen real, 0 placeholders |
+| Filtros compartibles por URL | ✅ | `?minPrice=500&maxPrice=1200&condition=nuevo` compone sin pisarse |
+| Detalle con galería, Q&A y reseñas | ✅ | 3 miniaturas, 3 secciones, reseña solo si `canReview` |
+| Carrito y checkout simulado | ✅ | pedido `pendiente` S/ 4 098, stock 8→7 y 5→4, carrito vacío, redirect a `/pedidos/[id]` |
+| Error de stock con nombre del producto | ✅ | `Stock insuficiente para "Monitor Samsung Odyssey…": disponible 0, solicitado 1` |
+| Panel del vendedor | ✅ | 8 productos (7 publicados + 1 oculto), kanban con 5 columnas |
+| Dos drag & drop accesibles | ✅ | `KeyboardSensor` en galería y kanban, asas con `aria-label` |
+| Separación de capas | ✅ | los dos greps devuelven vacío |
+| `lint` / `type-check` / `build` | ✅ | los tres exit 0 |
+
+## Deuda técnica y limitaciones conocidas
+
+1. **No se pueden mostrar nombres de otros usuarios.** RLS restringe `profiles`
+   a su dueño. Preguntas → "Usuario"; reseñas → "Comprador verificado".
+   Requiere una vista `public_profiles`.
+2. **Cancelar un pedido no repone stock.** No hay trigger. Advertido en la UI.
+3. **Pedidos multi-vendedor:** el estado vive en `orders`, así que mover una
+   tarjeta afecta al pedido completo aunque el vendedor solo vea sus ítems.
+4. **Sin realtime.** El comprador ve los cambios de estado del vendedor al
+   recargar.
+5. **Búsqueda por `ilike`,** provisional hasta la búsqueda semántica.
+6. **Vulnerabilidades transitivas** en `postcss` y `sharp` vía `next@15.5.23`;
+   el arreglo exige Next 16.
+7. **Sin tests automatizados de frontend.** Vitest y Playwright llegan en la
+   sesión 6; toda la verificación de esta sesión fue manual e instrumentada.
+
+## Pendientes
+
+**Heredado de la sesión 1 (no ejecutada):** no existen `docs/COSTOS.md` ni
+`docs/PROMPTS.md`. No bloquean nada.
+
+**Sesión 2:** las fases 2.6 y 2.7 figuraban como pendientes en la spec, pero
+**ya estaban hechas**: existen `supabase/tests/rls-validation.sql` y
+`docs/ARQUITECTURA.md` (commits `feccd12` y `fb419eb`).
+
+**Para la sesión 4:** asistente de soporte con RAG, ruta `/soporte` y su
+entrada en el menú, pestaña de IA en `/buscar`, y los Route Handlers de
+`app/api/v1/` que hasta ahora están vacíos a propósito.
+
+---
+
+# Sesión 2 — Base de datos, RLS y Storage
+
+> Reconstruida a partir de commits; no hubo bitácora en su momento.
+
+| Commit | Qué entregó |
+|---|---|
+| `fecd756` | Buckets `product-images` y `avatars` con sus políticas (Fase 2.4) |
+| `cb96ae4` | `seed.sql`: 6 usuarios, 8 categorías, 16 productos, pedidos en los 5 estados (Fase 2.5) |
+| `feccd12` | Batería de validación de RLS en `supabase/tests/` (Fase 2.6) |
+| `fb419eb` | `docs/ARQUITECTURA.md` y actualización de CLAUDE.md (Fase 2.7) |
+| `66622bd` | Corrección: `pgcrypto` cualificado por esquema en `seed.sql` y `search_path` fijado en las funciones de trigger |
+
+Dejó 14 tablas con RLS, el RPC transaccional `create_order_from_cart` y los
+clientes de Supabase (browser, server, middleware, admin) sobre los que se
+apoyó toda la sesión 3.
+
+---
+
+# Sesión 1 — Fundamentos
+
+No se ejecutó. No hay commits ni entregables (`docs/COSTOS.md`,
+`docs/PROMPTS.md`) en el repositorio.
