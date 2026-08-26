@@ -6,6 +6,233 @@ qué se dejó fuera a propósito.
 
 ---
 
+# Sesión 4 — RAG con Hugging Face (2026-08-26)
+
+MercadoTech gana búsqueda semántica y dos asistentes conversacionales
+(compras y soporte) sobre la infraestructura de las sesiones 2-3: pgvector,
+una tabla nueva de embeddings, indexación automática, y los primeros Route
+Handlers del proyecto (`app/api/v1/`, vacíos a propósito desde la sesión 2).
+
+**Volumen:** `git diff --shortstat ae43c50..HEAD` → 52 archivos,
++3 302 / −14.
+
+## Prompt 0 — Verificación y provisión de IA (commit `9f5a394`)
+
+**Construido:** verificación de la sesión 3 (todos los prerrequisitos ✅),
+stack local reconstruido, `HUGGINGFACEHUB_API_TOKEN` en `.env.local`
+(nunca commiteado; ver decisión abajo), `.env.example` con las 3 variables
+de IA sin valores, `@huggingface/inference` y `tsx` instalados, smoke test
+real contra la API (embedding de 384, completion coherente).
+
+**Decisión — el token se reutilizó del proyecto ReadHub del mismo alumno**,
+por instrucción explícita del usuario, en vez de generar uno nuevo (tarea
+que la spec reserva al humano). Se copió únicamente la variable de Hugging
+Face; las credenciales de Supabase del `.env.local` de MercadoTech
+quedaron intactas (son de su propio stack local, no las de ReadHub).
+
+**Problema — Docker Desktop no estaba corriendo.** Mismo síntoma que en la
+sesión 3: se resolvió arrancándolo y con `supabase start`.
+
+## Fase 4.1 — Infraestructura vectorial (commit `876a5a1`)
+
+**Construido:** 4 migraciones nuevas — `enable_pgvector`,
+`create_knowledge_embeddings` (tabla + índice HNSW `vector_cosine_ops`),
+`create_match_knowledge` (RPC), `knowledge_embeddings_rls` — más
+`schema.sql`/`policies.sql` actualizados y `types/database.ts` regenerado.
+
+**Decisión — una tabla discriminada por `source_type`, no dos gemelas.**
+Permite un solo RPC y una sola búsqueda para ambas fuentes (productos y
+FAQ); el precio es que `source_id` no lleva FK dura (apunta a dos tablas
+distintas), documentado en la propia migración: al borrar la fuente, la
+ficha queda huérfana hasta que algo la limpie (Fase 4.3).
+
+**Decisión — `match_knowledge` es `SECURITY INVOKER`, no `DEFINER`** (a
+diferencia de `create_order_from_cart`, sesión 2). `create_order_from_cart`
+necesita saltarse RLS porque `authenticated` no tiene INSERT directo en
+`orders`; `match_knowledge` solo LEE `knowledge_embeddings`, y la política
+de esa tabla (SELECT solo `authenticated`, decisión 1 de la spec: la IA
+exige sesión) es exactamente el control de acceso que se quiere aplicar —
+no hay nada que saltarse.
+
+## Fase 4.2 — Capa de IA y servicio de embeddings (commit `505e66a`)
+
+**Construido:** `lib/constants/ai.ts` (13 tunables comentados),
+`lib/ai/embeddings.ts`, `lib/ai/completion.ts`, `lib/ai/prompts.ts`,
+`services/embedding.service.ts`.
+
+**Decisión — el modelo de chat se lee de `HUGGINGFACE_CHAT_MODEL`, con
+`HUGGINGFACE_CHAT_MODEL_DEFAULT` como fallback en código.** Ambos
+verificados contra la API real en el Prompt 0. Mismo patrón para el modelo
+de embeddings.
+
+**Decisión — embeddings vía SDK, chat vía `fetch`.** Hugging Face no
+expone `feature-extraction` en su router OpenAI-compatible (documentado);
+el router de chat sí es estable para `fetch` directo. Es el único archivo
+del proyecto que usa un SDK en vez de `fetch`, justificado por el propio
+proveedor, no por preferencia.
+
+## Fase 4.3 — Indexación automática (commit `042bc32`)
+
+**Construido:** `lib/api-response.ts`, `app/api/v1/reindex/route.ts`
+(primer Route Handler del proyecto), `services/indexing-trigger.service.ts`
+(fire-and-forget), `scripts/index-all.ts`, y `useProductForm`/
+`useSellerProducts` ampliados para disparar el trigger tras crear, editar,
+activar/ocultar o eliminar un producto.
+
+**Problema — `service_role` no tenía GRANT sobre `products`,
+`support_articles`, `categories` ni `knowledge_embeddings`.** Este proyecto
+nunca otorga privilegios por default (sin `ALTER DEFAULT PRIVILEGES`); cada
+rol recibe exactamente lo que sus políticas necesitan, tabla por tabla
+(convención de la sesión 2). Hasta esta sesión ningún código usaba el
+cliente admin contra tablas de dominio, así que el hueco nunca se
+manifestó — apareció como `permission denied for table products` (42501)
+al correr `index-all.ts`. Se agregó una migración nueva
+(`grant_service_role_knowledge_access`) con los GRANTs exactos que faltaban.
+Misma lección de la sesión 2: RLS/GRANT sin GRANT explícito = error opaco,
+esta vez para el rol que bypasea RLS.
+
+**Evidencia:** `npx tsx scripts/index-all.ts` → 14 productos + 10 artículos
+= 24 fichas. Publicar un producto de prueba como `seller1` → fila 25;
+editar su título → sigue en 25 (upsert, `content` actualizado); publicar
+con el token renombrado → la publicación funciona igual, con
+`console.warn` en la consola del navegador (best-effort real, no solo en
+el papel); eliminar el producto → su ficha huérfana se limpia sola.
+
+## Fase 4.4 — Búsqueda semántica en el catálogo (commit `6308949`)
+
+**Construido:** `services/vector-search.service.ts`,
+`app/api/v1/search/semantic/route.ts`, `hooks/useSemanticSearch.ts`,
+pestaña "Resultados con IA" en `/buscar` (reutiliza `ProductGrid`/
+`ProductCard` con un prop opcional `similarity` para el badge — sin
+duplicar el card), y `getProductsByIds` nuevo en `product.service.ts` para
+hidratar los resultados contra el catálogo ACTUAL.
+
+**Evidencia (con sesión):** "audífonos para el gimnasio" → pestaña exacta
+0 productos, pestaña IA lista Audífonos Logitech G435 primero (42% match).
+"algo para conectar mi casa a internet" → aparece el router TP-Link.
+Anónimo → pestaña IA muestra el aviso de login con
+`redirectTo=%2Fbuscar%3Fq%3D...`; pestaña exacta sigue funcionando igual.
+"autos usados" → `EmptyState` con sugerencia de reformular.
+
+## Fase 4.5 — Constructor de contexto (commit `1132637`)
+
+**Construido:** `lib/ai/context-builder.ts`, función pura (selección por
+similitud/largo mínimo + presupuesto de caracteres con truncado-o-descarte).
+
+**Evidencia:** demostración en frío con 8 fuentes sintéticas (sin red):
+descarta correctamente las 2 bajo threshold y la de contenido mínimo,
+trunca la fuente "gigante" para llenar exactamente el presupuesto, y un
+caso adicional confirma el descarte completo (no un truncado a medias)
+cuando el remanente es menor que `MIN_TRUNCATED_SOURCE_CHARS`. `grep`
+confirma cero imports de `fetch`/Supabase/React.
+
+## Fase 4.6 — Servicio conversacional y endpoint (commit `2fa6bfa`)
+
+**Construido:** `types/chat.ts`, `services/chat.service.ts` (orquesta
+búsqueda → contexto → completion, sin reimplementar ninguna), y
+`app/api/v1/chat/route.ts` con el log estructurado por consulta.
+
+**Decisión — `ChatSource` se enriquece con precio/imagen ACTUALES del
+producto** (vía `getProductsByIds`, la misma hidratación de 4.4) para que
+la mini-card de fuentes de la Fase 4.7 tenga algo que mostrar — el título
+citado en la respuesta viene congelado del momento de la indexación, pero
+precio e imagen no tiene sentido que lo estén.
+
+**Evidencia:** 3 `curl` con cookie de sesión real — compras cita 5 fuentes
+con respuesta coherente; soporte cita el artículo de devoluciones exacto;
+"¿venden autos usados?" ya mostraba la primera señal del problema de
+calibración que se resolvió en la 4.8. 401 sin cookie, 422 con `mode`
+inválido, logs estructurados con el formato exacto de la spec.
+
+## Fase 4.7 — Interfaz del asistente (commit `5ffdc2c`)
+
+**Construido:** `hooks/useChat.ts`, `services/ticket.service.ts`
+(`listMine`) + `hooks/useMyTickets.ts`, `components/chat/*` (puros: solo
+props, sin conocer el endpoint ni `lib/ai/`), `TicketStatusBadge`, páginas
+`/asistente` y `/soporte` (+ "Mis tickets"), `UserMenu`/`MobileNav` y el
+middleware ampliados con los dos prefijos nuevos.
+
+**Evidencia:** flujo completo en el navegador — "laptop liviana para la
+universidad" en `/asistente` cita 2 productos reales, clic en una fuente
+abre el producto correcto; "¿cómo devuelvo un producto?" en `/soporte` cita
+el artículo correcto; "¿venden autos usados?" en modo soporte sugiere crear
+un ticket; `buyer1` y `buyer3` ven cada uno sus propios tickets del seed;
+anónimo en `/asistente` → `/login?redirectTo=%2Fasistente`; servidor sin
+token → mensaje de error inline ("No pude procesar tu consulta, intenta de
+nuevo"), resto de la app sin afectar. `npm run build` de producción pasa.
+
+## Fase 4.8 — Calibración, observabilidad y casos de prueba (commit `d960477`)
+
+**Construido:** `docs/RAG.md` con los 6 casos ejecutados y su evidencia, la
+tabla de calibración, y la tabla de síntomas ampliada.
+
+**Decisión — threshold 0.3 → 0.38, con datos reales.** Con 0.3, las 10
+consultas de calibración (los 6 casos + 2 legítimas + 2 absurdas)
+recuperaban ficha "relevante" sin excepción — el piso de ruido del modelo
+de embeddings en español ronda 0.3-0.35, no 0.1-0.2 como asumía el
+comentario original. 0.38 corta las consultas absurdas de tipo `producto`
+sin romper el caso canónico "audífonos para el gimnasio" (su mejor match,
+0.421, sigue arriba). **Limitación documentada, no resuelta:** el modo
+`soporte` sigue dejando pasar ruido (los artículos de FAQ comparten
+vocabulario y su similitud de base es más alta) — subir lo suficiente para
+filtrarlo rompería el caso canónico de `producto`. Mitigado en la práctica
+porque `SUPPORT_SYSTEM_INSTRUCTIONS` ya le pide al modelo admitir cuando el
+contexto no sirve, y lo cumple.
+
+**Problema — cuota mensual de Hugging Face agotada a mitad de la
+calibración** (HTTP 402 del proveedor de *chat*, cuota separada de la de
+embeddings). No es una falla del código: `lib/ai/completion.ts` ya lo
+reporta con un mensaje accionable. La calibración de similitud se completó
+igual consultando `match_knowledge` directamente (solo embeddings, cuota
+intacta) en vez de `/api/v1/chat` — no afecta la validez de los datos, es
+justo la pieza que el threshold gobierna.
+
+---
+
+## Criterios de aceptación de la sesión
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| Los 6 casos de prueba pasan y quedan documentados | ✅ | `docs/RAG.md` |
+| Sin token, el resto de la app funciona y el chat/búsqueda IA fallan con error controlado | ✅ | Fase 4.7: mensaje inline, resto de la app intacto |
+| Anónimo: catálogo y búsqueda exacta intactos; IA pide sesión | ✅ | Fases 4.4 y 4.7 |
+| `grep "@huggingface"` fuera de `lib/ai/` → vacío | ✅ | verificado en 4.2 |
+| `grep "lib/supabase/admin"` fuera de Route Handlers/`scripts/` → vacío | ✅ | verificado en 4.3 |
+| `lint` / `type-check` / `build` | ✅ | los tres exit 0, build de producción completo |
+
+## Deuda técnica y limitaciones conocidas
+
+1. **Threshold único para ambas fuentes.** `producto` y `articulo_soporte`
+   tienen distribuciones de similitud distintas (la FAQ comparte más
+   vocabulario); un solo `VECTOR_SEARCH_DEFAULT_SIMILARITY_THRESHOLD`
+   global no puede optimizar ambas a la vez. Ver `docs/RAG.md`,
+   "Calibración".
+2. **`source_id` sin FK dura** en `knowledge_embeddings` (decisión de
+   diseño, no un olvido) — fichas huérfanas posibles, limpiadas por el
+   trigger best-effort y descartadas al hidratar, nunca por integridad
+   referencial de Postgres.
+3. **Sin streaming.** El chat espera la respuesta completa; no está en el
+   alcance de la sesión.
+4. **Crear tickets desde el chat no existe todavía.** `ticket.service.ts`
+   solo lista (`listMine`); llega con el agente de la sesión 8.
+5. **Historial de chat solo en memoria.** No persiste entre recargas ni
+   entre pestañas (decisión de alcance de la spec).
+6. **Heredada de la sesión 3:** sin tests automatizados de frontend
+   (Vitest/Playwright llegan en la sesión 6).
+
+## Pendientes
+
+**Heredado de la sesión 1 (no ejecutada):** siguen sin existir
+`docs/COSTOS.md` ni `docs/PROMPTS.md`. No bloquea nada.
+
+**Sesión 2 (Fases 2.6/2.7):** ya estaban completas desde la sesión 3
+(commits `feccd12` y `fb419eb`) — no quedaba nada pendiente ahí.
+
+**Para la sesión 5:** ver `MercadoTech_sesion5.md`. Esta bitácora no
+adelanta su contenido.
+
+---
+
 # Sesión 3 — UI Inteligente y Frontend Multimodal (2026-08-24)
 
 MVP funcional completo del marketplace sobre la infraestructura de la sesión 2:
