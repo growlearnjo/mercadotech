@@ -5,6 +5,7 @@ import * as React from "react";
 import * as sellerService from "@/services/seller.service";
 import * as storageService from "@/services/storage.service";
 import { getProductById, getProductImages } from "@/services/product.service";
+import { triggerReindex } from "@/services/indexing-trigger.service";
 import { validateProduct, type ProductErrors } from "@/lib/validators/product";
 import type { ProductCondition } from "@/lib/constants/roles";
 import type { GalleryImage } from "@/components/seller/SortableImageGallery";
@@ -257,6 +258,9 @@ export function useProductForm(
 
       if (isEdit && productId) {
         await sellerService.updateProduct(productId, payload);
+        // Best-effort (Fase 4.3): el título/descripción cambió, la ficha
+        // vectorial debe reflejarlo. Nunca bloquea ni puede fallar la edición.
+        triggerReindex("producto", productId);
         return productId;
       }
 
@@ -272,6 +276,7 @@ export function useProductForm(
         );
         await storageService.insertProductImage(newId, path, index);
       }
+      triggerReindex("producto", newId);
       return newId;
     } catch {
       setError("No pudimos guardar el producto.");

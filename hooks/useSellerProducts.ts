@@ -4,6 +4,7 @@ import * as React from "react";
 
 import * as sellerService from "@/services/seller.service";
 import { ProductHasSalesError } from "@/services/seller.service";
+import { triggerReindex } from "@/services/indexing-trigger.service";
 import type { Product } from "@/types/product";
 
 export function useSellerProducts(sellerId: string | null) {
@@ -44,6 +45,9 @@ export function useSellerProducts(sellerId: string | null) {
       );
       try {
         await sellerService.toggleActive(productId, isActive);
+        // Best-effort (Fase 4.3): activo → (re)indexa; inactivo → el
+        // service detecta is_active=false y borra la ficha.
+        triggerReindex("producto", productId);
         return true;
       } catch {
         setProducts(previous);
@@ -59,6 +63,9 @@ export function useSellerProducts(sellerId: string | null) {
       try {
         await sellerService.deleteProduct(productId);
         setProducts((prev) => prev.filter((p) => p.id !== productId));
+        // Best-effort (Fase 4.3, decisión 6): el producto ya no existe, el
+        // service detecta la ausencia y limpia la ficha huérfana.
+        triggerReindex("producto", productId);
         return null;
       } catch (err) {
         if (err instanceof ProductHasSalesError) return err.message;
