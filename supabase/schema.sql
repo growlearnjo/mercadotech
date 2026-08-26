@@ -473,3 +473,115 @@ revoke execute on function public.create_order_from_cart(uuid) from public;
 revoke execute on function public.create_order_from_cart(uuid) from anon;
 grant execute on function public.create_order_from_cart(uuid) to authenticated;
 
+-- ================================================================
+-- Fuente: 20260826150000_enable_pgvector.sql
+-- ================================================================
+-- pgvector: agrega el tipo `vector` y los operadores de similitud (<=>, <->,
+-- <#>) que usa la búsqueda semántica de la sesión 4. Se instala en el schema
+-- `extensions` (no en `public`), mismo patrón que pgcrypto en este proyecto;
+-- `extensions` ya está en el search_path de la Data API (supabase/config.toml).
+-- Viene incluida en el stack local de Supabase, por eso no requiere setup
+-- adicional más allá de habilitarla.
+create extension if not exists vector with schema extensions;
+
+-- ================================================================
+-- Fuente: 20260826150100_create_knowledge_embeddings.sql
+-- ================================================================
+-- knowledge_embeddings: el "fichero" del bibliotecario (sesión 4, Fase 4.1).
+-- UNA tabla para las dos fuentes (products y support_articles), discriminada
+-- por source_type: más simple que dos tablas gemelas y permite búsquedas
+-- conjuntas con un solo RPC (match_knowledge). Ver razonamiento SECURITY
+-- INVOKER vs DEFINER en la migración del RPC.
+--
+-- source_id SIN foreign key: apunta a dos tablas origen distintas
+-- (products.id o support_articles.id según source_type), y Postgres no
+-- soporta una FK condicional a "una u otra tabla". Consecuencia: si el
+-- producto o artículo de origen se borra, su ficha queda huérfana en esta
+-- tabla. El service de búsqueda (vector-search.service, Fase 4.4) descarta
+-- esas fichas al hidratar contra la tabla origen; el endpoint de reindexado
+-- (Fase 4.3) también las limpia cuando detecta que la fuente ya no existe.
+--
+-- Supuesto: chunk_index existe desde ya (default 0, cada fuente es un solo
+-- chunk en esta sesión) para no requerir una migración de esquema el día que
+-- se trocee contenido largo en varios pedazos.
+create table public.knowledge_embeddings (
+  id uuid primary key default gen_random_uuid(),
+  source_type text not null check (source_type in ('producto', 'articulo_soporte')),
+  source_id uuid not null,
+  chunk_index integer not null default 0,
+  content text not null,
+  -- Cambiar de modelo de embeddings a uno con otra dimensión (hoy 384,
+  -- sentence-transformers/all-MiniLM-L6-v2) exige una migración nueva:
+  -- ALTER COLUMN embedding TYPE extensions.vector(N), recrear el índice HNSW
+  -- (está atado a la dimensión) y recrear match_knowledge (su firma fija
+  -- vector(384)). No es un cambio de una sola variable de entorno.
+  embedding extensions.vector(384) not null,
+  metadata jsonb not null default '{}',
+  created_at timestamptz not null default now(),
+  unique (source_type, source_id, chunk_index)
+);
+
+alter table public.knowledge_embeddings enable row level security;
+
+-- Índice HNSW con vector_cosine_ops: coherente con el operador `<=>` (
+-- distancia coseno) que usa match_knowledge para ordenar por similitud.
+create index knowledge_embeddings_embedding_hnsw_idx
+  on public.knowledge_embeddings
+  using hnsw (embedding extensions.vector_cosine_ops);
+
+create index knowledge_embeddings_source_type_idx
+  on public.knowledge_embeddings (source_type);
+
+-- ================================================================
+-- Fuente: 20260826150200_create_match_knowledge.sql
+-- ================================================================
+-- match_knowledge: dado el embedding de una pregunta, devuelve las fichas
+-- más parecidas de knowledge_embeddings.
+--
+-- SECURITY INVOKER (a diferencia de create_order_from_cart, que es SECURITY
+-- DEFINER): create_order_from_cart necesita SALTARSE RLS porque authenticated
+-- no tiene INSERT directo en orders/order_items (solo esa función puede
+-- escribir ahí). match_knowledge, en cambio, solo LEE knowledge_embeddings, y
+-- la política de esa tabla (SELECT para authenticated, decisión 1 de la
+-- spec: la IA exige sesión) es exactamente el control de acceso que se
+-- quiere aplicar aquí — no hay nada que saltarse. SECURITY INVOKER respeta
+-- la visibilidad del caller: si mañana se restringe RLS por vendedor o rol,
+-- esta función lo hereda gratis, sin tocarla.
+-- set search_path fijo: mismo motivo que en el resto del proyecto (evita
+-- hijacking vía search_path), aunque el riesgo es menor en INVOKER que en
+-- DEFINER.
+create or replace function public.match_knowledge(
+  query_embedding extensions.vector(384),
+  p_source_type text default null,
+  match_count int default 5,
+  similarity_threshold float default 0.3
+)
+returns table (
+  source_type text,
+  source_id uuid,
+  content text,
+  metadata jsonb,
+  similarity float
+)
+language sql
+stable
+security invoker
+set search_path = public, extensions
+as $$
+  select
+    ke.source_type,
+    ke.source_id,
+    ke.content,
+    ke.metadata,
+    1 - (ke.embedding <=> query_embedding) as similarity
+  from public.knowledge_embeddings ke
+  where (p_source_type is null or ke.source_type = p_source_type)
+    and 1 - (ke.embedding <=> query_embedding) >= similarity_threshold
+  order by ke.embedding <=> query_embedding
+  limit match_count;
+$$;
+
+revoke execute on function public.match_knowledge(extensions.vector, text, int, float) from public;
+revoke execute on function public.match_knowledge(extensions.vector, text, int, float) from anon;
+grant execute on function public.match_knowledge(extensions.vector, text, int, float) to authenticated;
+
