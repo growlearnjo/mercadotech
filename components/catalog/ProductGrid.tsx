@@ -13,6 +13,8 @@ type ProductGridProps = {
   onRetry?: () => void;
   /** Acción sugerida cuando no hay resultados (ej. "Limpiar filtros"). */
   emptyAction?: React.ReactNode;
+  /** product.id -> similitud (0-1). Pinta el badge de coincidencia en la pestaña IA (Fase 4.4). */
+  similarityByProductId?: Record<string, number>;
 };
 
 /** Columnas: 2 en móvil, 3 en tablet, 4 en desktop — de ahí el page size 12. */
@@ -24,6 +26,7 @@ export function ProductGrid({
   error,
   onRetry,
   emptyAction,
+  similarityByProductId,
 }: ProductGridProps) {
   if (error) {
     return (
@@ -60,7 +63,11 @@ export function ProductGrid({
   return (
     <div className={GRID}>
       {products.map((product) => (
-        <ProductCard key={product.id} product={product} />
+        <ProductCard
+          key={product.id}
+          product={product}
+          similarity={similarityByProductId?.[product.id]}
+        />
       ))}
     </div>
   );

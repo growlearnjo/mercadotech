@@ -11,6 +11,8 @@ import type { Product } from "@/types/product";
 type ProductCardProps = {
   product: Product;
   className?: string;
+  /** 0-1. Cuando viene definido (pestaña "Resultados con IA", Fase 4.4) se pinta un badge con el % de coincidencia. */
+  similarity?: number;
 };
 
 /**
@@ -19,7 +21,7 @@ type ProductCardProps = {
  *
  * No conoce Supabase: recibe `image_url` ya resuelta por el service.
  */
-export function ProductCard({ product, className }: ProductCardProps) {
+export function ProductCard({ product, className, similarity }: ProductCardProps) {
   const outOfStock = product.stock === 0;
 
   return (
@@ -37,6 +39,11 @@ export function ProductCard({ product, className }: ProductCardProps) {
           className="aspect-square w-full rounded-none"
           sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
         />
+        {typeof similarity === "number" ? (
+          <span className="absolute top-2 right-2 rounded-4xl bg-primary px-2 py-0.5 text-xs font-medium text-primary-foreground">
+            {Math.round(similarity * 100)}% match
+          </span>
+        ) : null}
         <div className="absolute top-2 left-2 flex flex-col items-start gap-1">
           <ConditionBadge condition={product.condition} />
           {outOfStock ? (

@@ -174,6 +174,34 @@ export async function getProductById(
   return toProduct(data as unknown as ProductRow, supabase);
 }
 
+/**
+ * Productos activos por id, en el mismo formato que el resto del catálogo
+ * (`price` a number, `image_url` resuelta, agregados de reseñas). Usado por
+ * vector-search.service.ts (Fase 4.4) para hidratar los resultados de la
+ * búsqueda semántica contra los datos ACTUALES del producto — la ficha
+ * vectorial solo guarda una copia del texto en el momento en que se indexó.
+ * Descarta silenciosamente los ids que no correspondan a un producto activo
+ * (borrado, inactivo, o una ficha huérfana): el caller decide qué hacer con
+ * los ids que falten en el resultado.
+ */
+export async function getProductsByIds(
+  ids: string[],
+  supabase: Client = createClient(),
+): Promise<Product[]> {
+  if (ids.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("products")
+    .select(PRODUCT_SELECT)
+    .in("id", ids)
+    .eq("is_active", true);
+  if (error) throw error;
+
+  return (data ?? []).map((row) =>
+    toProduct(row as unknown as ProductRow, supabase),
+  );
+}
+
 /** Galería completa de un producto, ordenada por `position`. */
 export async function getProductImages(
   productId: string,

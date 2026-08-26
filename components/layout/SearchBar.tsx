@@ -21,11 +21,9 @@ type SearchBarProps = {
 };
 
 /**
- * Buscador del navbar.
- *
- * La búsqueda semántica (toggle de IA) llega en la sesión 4: cuando exista, se
- * añade aquí un control para alternar entre búsqueda por texto y semántica, y
- * `onSearch` pasará a recibir también el modo.
+ * Buscador del navbar. Siempre navega a /buscar?q=; la pestaña "Resultados
+ * con IA" de esa página (Fase 4.4) reusa la misma query, sin tocar este
+ * componente.
  */
 export function SearchBar({
   defaultValue = "",
