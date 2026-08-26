@@ -38,17 +38,25 @@ export const VECTOR_SEARCH_MAX_TOP_K = 20;
 
 /**
  * Similitud mínima (coseno, 0-1) para considerar un resultado relevante.
- * PROVISIONAL: pares de texto no relacionados ya rondan 0.1-0.2 (comparten
- * idioma); los relacionados suelen superar 0.4. Se calibra con datos reales
- * en la Fase 4.8 — si cambia, este comentario se actualiza con el porqué.
+ * Calibrado en la Fase 4.8 con datos reales (ver docs/RAG.md, sección
+ * "Calibración"): con 0.3, consultas sin relación ("¿venden autos usados?",
+ * "recomiéndame una pizza") seguían trayendo 5 productos por encima del
+ * umbral (0.32-0.35) — ruido, no señal. Subido a 0.38: sigue sin cortar el
+ * caso canónico "audífonos para el gimnasio" (su mejor match es 0.421) y
+ * corta ambos casos de ruido (su mejor match, 0.354 y 0.322, queda por
+ * debajo). Sigue siendo IMPERFECTO para el modo soporte — el vocabulario
+ * compartido entre artículos de FAQ hace que hasta preguntas absurdas
+ * ("cuéntame un chiste") superen 0.38 (0.431); ahí la última defensa es que
+ * SUPPORT_SYSTEM_INSTRUCTIONS ya le pide al modelo admitir cuando el
+ * contexto no sirve, y en la práctica lo hace (ver docs/RAG.md, Caso 5).
  */
-export const VECTOR_SEARCH_DEFAULT_SIMILARITY_THRESHOLD = 0.3;
+export const VECTOR_SEARCH_DEFAULT_SIMILARITY_THRESHOLD = 0.38;
 
 /** Máximo de fuentes que entran al contexto del LLM, tras ordenar por similitud. */
 export const CONTEXT_BUILDER_DEFAULT_MAX_SOURCES = 5;
 
-/** Mismo umbral que la búsqueda vectorial: el contexto no debe incluir ruido que la propia búsqueda ya descartaría. */
-export const CONTEXT_BUILDER_DEFAULT_MIN_SIMILARITY = 0.3;
+/** Mismo umbral que la búsqueda vectorial (calibrado en la Fase 4.8, ver arriba): el contexto no debe incluir ruido que la propia búsqueda ya descartaría. */
+export const CONTEXT_BUILDER_DEFAULT_MIN_SIMILARITY = 0.38;
 
 /** Bajo este largo, una ficha es demasiado corta para aportar contexto útil (ej. un título suelto). */
 export const CONTEXT_BUILDER_MIN_CONTENT_LENGTH = 20;
