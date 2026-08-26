@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, Package, Store, Heart } from "lucide-react";
+import { LogOut, Package, Store, Heart, Sparkles, LifeBuoy } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -81,6 +81,15 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
         <DropdownMenuItem render={<Link href="/favoritos" />} nativeButton={false}>
           <Heart aria-hidden="true" />
           Favoritos
+        </DropdownMenuItem>
+        {/* Omitidas a propósito en la sesión 3 (decisión 3, Fase 4.7): la IA exige sesión. */}
+        <DropdownMenuItem render={<Link href="/asistente" />} nativeButton={false}>
+          <Sparkles aria-hidden="true" />
+          Asistente
+        </DropdownMenuItem>
+        <DropdownMenuItem render={<Link href="/soporte" />} nativeButton={false}>
+          <LifeBuoy aria-hidden="true" />
+          Soporte
         </DropdownMenuItem>
 
         {canSell ? (

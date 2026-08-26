@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Heart, LogOut, Menu, Package, ShoppingCart, Store } from "lucide-react";
+import {
+  Heart,
+  LifeBuoy,
+  LogOut,
+  Menu,
+  Package,
+  ShoppingCart,
+  Sparkles,
+  Store,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -96,6 +105,30 @@ export function MobileNav({
               >
                 <Heart className="size-4" aria-hidden="true" />
                 Favoritos
+              </SheetClose>
+              <SheetClose
+                nativeButton={false}
+                render={
+                  <Link
+                    href="/asistente"
+                    className="flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+                  />
+                }
+              >
+                <Sparkles className="size-4" aria-hidden="true" />
+                Asistente
+              </SheetClose>
+              <SheetClose
+                nativeButton={false}
+                render={
+                  <Link
+                    href="/soporte"
+                    className="flex items-center gap-2 rounded-md px-2 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+                  />
+                }
+              >
+                <LifeBuoy className="size-4" aria-hidden="true" />
+                Soporte
               </SheetClose>
               {canSell ? (
                 <SheetClose

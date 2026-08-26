@@ -17,6 +17,14 @@ export interface ChatSource {
   sourceId: string;
   title: string;
   similarity: number;
+  /**
+   * Solo presentes cuando sourceType === 'producto': precio e imagen
+   * ACTUALES del producto (Fase 4.7, mini-card de SourcesList) — no la copia
+   * congelada que se usó para redactar la respuesta. `undefined` si el
+   * producto ya no existe o está inactivo (ficha huérfana).
+   */
+  price?: number;
+  imageUrl?: string | null;
 }
 
 export interface ChatResultMetadata {

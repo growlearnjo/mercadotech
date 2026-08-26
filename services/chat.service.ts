@@ -16,7 +16,9 @@ import {
   searchByEmbedding,
   type KnowledgeSourceType,
 } from "@/services/vector-search.service";
-import type { ChatMode, ChatResult } from "@/types/chat";
+import { getProductsByIds } from "@/services/product.service";
+import type { ChatMode, ChatResult, ChatSource } from "@/types/chat";
+import type { RagContextSource } from "@/lib/ai/prompts";
 
 type Client = SupabaseClient<Database>;
 
@@ -34,6 +36,39 @@ const MODE_INSTRUCTIONS: Record<ChatMode, string> = {
 export interface AskOptions {
   topK?: number;
   similarityThreshold?: number;
+}
+
+/**
+ * Adjunta precio/imagen ACTUALES a las fuentes de tipo 'producto' (Fase 4.7:
+ * SourcesList pinta una mini-card, no solo el título). Reusa
+ * getProductsByIds (la misma hidratación que vector-search.service.ts) en
+ * vez de duplicarla; los productos que ya no existen o están inactivos
+ * simplemente quedan sin price/imageUrl.
+ */
+async function enrichSources(
+  sources: RagContextSource[],
+  supabase: Client,
+): Promise<ChatSource[]> {
+  const productIds = sources
+    .filter((source) => source.sourceType === "producto")
+    .map((source) => source.sourceId);
+  const products =
+    productIds.length > 0 ? await getProductsByIds(productIds, supabase) : [];
+  const productById = new Map(products.map((product) => [product.id, product]));
+
+  return sources.map((source) => {
+    const product =
+      source.sourceType === "producto" ? productById.get(source.sourceId) : undefined;
+    return {
+      position: source.position,
+      sourceType: source.sourceType,
+      sourceId: source.sourceId,
+      title: source.title,
+      similarity: source.similarity,
+      price: product?.price,
+      imageUrl: product?.image_url,
+    };
+  });
 }
 
 /**
@@ -82,15 +117,7 @@ export async function ask(
     query,
     answer: completion.text,
     hasRelevantContext: context.sources.length > 0,
-    sources: context.sources.map(
-      ({ position, sourceType, sourceId, title, similarity }) => ({
-        position,
-        sourceType,
-        sourceId,
-        title,
-        similarity,
-      }),
-    ),
+    sources: await enrichSources(context.sources, supabase),
     metadata: {
       model: completion.model,
       retrievedCount: matches.length,

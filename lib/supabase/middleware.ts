@@ -18,6 +18,11 @@ const PROTECTED_PREFIXES = [
   "/pedidos",
   "/favoritos",
   "/vendedor",
+  // Sesión 4 (decisión 1): la IA exige sesión — protege la cuota gratuita
+  // de Hugging Face y evita que un anónimo llegue a pantallas sin acceso
+  // real a knowledge_embeddings (RLS: SELECT solo authenticated).
+  "/asistente",
+  "/soporte",
 ] as const;
 
 function requiresSession(pathname: string): boolean {
