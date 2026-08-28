@@ -32,6 +32,17 @@ npm run db:images   # descarga imágenes de muestra y las sube a Storage
 npx tsx scripts/index-all.ts   # reindexa productos activos + FAQ publicada en knowledge_embeddings
 ```
 
+Servidor MCP (sesion 5). Se lanza SIEMPRE desde la raiz: el alias `@/*` resuelve
+a `./*` y desde otra carpeta los imports de services fallan. Resto en
+`mcp/README.md`.
+
+```bash
+npx tsx mcp/src/index.ts                                     # dev, por stdio
+npx @modelcontextprotocol/inspector npx tsx mcp/src/index.ts # Inspector
+node mcp/scripts/rpc.mjs tools/list                          # cliente JSON-RPC del repo
+cd mcp && npm run build && npm run type-check
+```
+
 `db:images` existe porque el seed crea las filas de `product_images` pero no
 los archivos. Requiere el manifiesto que documenta `scripts/seed-images.mjs`.
 
@@ -70,6 +81,11 @@ app/api/v1/        Route Handlers DELGADOS, solo para lo que no puede correr en 
                    navegador (secretos de IA, service role, cookies de sesión):
                    reindex, search/semantic, chat (sesión 4).
 scripts/           Utilidades de apoyo fuera del build (seed-images.mjs, index-all.ts).
+mcp/               Servidor MCP (sesion 5), proceso Node APARTE de Next y consumidor mas
+                   de services/: 10 tools, 7 resources, 5 prompts, todo SOLO LECTURA.
+                   src/{tools,resources,prompts}/  un archivo c/u + registro central
+                   src/shared/  derivaciones documentadas · src/context.ts  sus clientes
+.claude/skills/    Las 4 Skills de gobernanza del proyecto (sesion 5). Ver mas abajo.
 ```
 
 Reglas de independencia (aplican en todas las sesiones):
@@ -86,7 +102,15 @@ Reglas de independencia (aplican en todas las sesiones):
    una API v1 completa que el frontend nunca llamó).
 5. **Todo tunable vive en `lib/constants/`** con un comentario que justifica
    su valor.
-6. **Las páginas (`app/**/page.tsx` y los layouts) son el ÚNICO punto donde un
+6. **`mcp/` es un consumidor más de `services/` y `lib/ai/`: jamás reimplementa
+   lógica de negocio ni importa de `app/`, `components/` o `hooks/`.** Solo
+   puede importar de `services/`, `lib/ai/`, `lib/constants/` y `types/`. Sus
+   clientes de Supabase se construyen en `mcp/src/context.ts` y **nunca** desde
+   `lib/supabase/admin.ts`: ese archivo trae `import "server-only"`, que lanza
+   bajo Node/tsx puro. Si un dato no sale de un service existente, se compone
+   en `mcp/src/shared/` y se declara como derivación en el comentario. Y nada
+   en `mcp/` escribe en stdout, que transporta JSON-RPC (ver `stdout-guard.ts`).
+7. **Las páginas (`app/**/page.tsx` y los layouts) son el ÚNICO punto donde un
    hook se encuentra con un componente.** Si un componente necesita el tipo de
    un hook o de un service, ese tipo se mueve a `types/` o `lib/constants/`.
 
@@ -99,7 +123,15 @@ grep -rlE "^import .*@huggingface" --include="*.ts" . | grep -v node_modules | g
 grep -rlE "^import .*lib/supabase/admin" app components hooks services | grep -v api/v1
 ```
 
-Los cuatro anclan en `^import` a propósito: la versión sin ancla marcaba los
+Y estos tres, sobre el servidor MCP:
+
+```bash
+grep -rE "^import .*lib/supabase/admin" mcp/src      # server-only lanza bajo Node
+grep -rn "@/app/\|@/components/\|@/hooks/" mcp/src     # el MCP no toca esas capas
+grep -rn "console\.log(" mcp/src                     # stdout transporta JSON-RPC
+```
+
+Los cuatro primeros anclan en `^import` a propósito: la versión sin ancla marcaba los
 COMENTARIOS que explican por qué un archivo NO importa algo (pasaba en
 `embedding.service.ts` y `vector-search.service.ts`), y un gate con falsos
 positivos deja de leerse.
@@ -131,6 +163,22 @@ positivos deja de leerse.
 * Colores solo por tokens de `app/globals.css`; nada hardcodeado. Un `Badge`
   con color de token necesita `transition-none` o se queda anclado al tema
   anterior al alternar claro/oscuro.
+
+## Skills de gobernanza (`.claude/skills/`, sesión 5)
+
+Cuatro manuales de puesto que Claude Code carga solo, según lo que se le pida.
+**Las cuatro REPORTAN: ninguna edita código.** Corregir es siempre un paso
+aparte y humano-supervisado.
+
+| Skill | Se activa | Devuelve |
+|---|---|---|
+| `mercadotech-architecture-enforcer` | ANTES de crear/mover un archivo | PERMITIDO / RECHAZADO + ubicación correcta |
+| `mercadotech-code-reviewer` | al revisar código ya escrito | informe /10 por severidad |
+| `mercadotech-automatic-validator` | al cerrar una tarea o fase | APROBADA / FALLIDA, sin matices |
+| `mercadotech-tech-lead` | ante decisiones de diseño o deuda | scorecard ponderado |
+
+Fuente de verdad de las cuatro: este archivo — **ante contradicción, gana
+`CLAUDE.md`**. Se descubren al arrancar; si una no se activa, reiniciar.
 
 ## Fuente de verdad de la base de datos
 
@@ -164,12 +212,16 @@ por dentro de la página, no por el middleware (la búsqueda exacta es pública)
 * Sesión 3: completa (Fases 3.1–3.8). MVP funcional.
 * Sesión 4: completa (Fases 4.1–4.8). Búsqueda semántica + asistentes de
   compras/soporte con RAG sobre Hugging Face.
-* Siguiente: sesión 5 (ver `MercadoTech_sesion5.md`).
+* Sesión 5: completa (Fases 5.1–5.6). 4 Skills de gobernanza + servidor MCP de
+  solo lectura (10 tools, 7 resources, 5 prompts).
+* Siguiente: sesión 6 (testing con Vitest y Playwright).
 
 Mapa de carpetas: [`docs/ESTRUCTURA.md`](docs/ESTRUCTURA.md).
 Detalle de decisiones y problemas: [`docs/BITACORA.md`](docs/BITACORA.md).
 Checklist de calidad: [`docs/SESION3_CHECKLIST.md`](docs/SESION3_CHECKLIST.md).
 Flujo RAG, casos de prueba y calibración: [`docs/RAG.md`](docs/RAG.md).
+Ciclo de revisión de la sesión 5: [`docs/REVISION_S5.md`](docs/REVISION_S5.md).
+Servidor MCP (arquitectura, decisiones y síntomas): [`mcp/README.md`](mcp/README.md).
 
 ## Regla de sesiones
 

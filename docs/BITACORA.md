@@ -6,6 +6,242 @@ qué se dejó fuera a propósito.
 
 ---
 
+# Sesión 5 — Custom Skills y protocolo MCP (2026-08-28)
+
+MercadoTech no gana ninguna pantalla en esta sesión. Gana **dos cosas para las
+máquinas que trabajan con la tienda**: cuatro Skills que hacen cumplir la
+arquitectura del proyecto dentro de Claude Code, y un servidor MCP que expone
+la plataforma en solo lectura a cualquier cliente del protocolo, reutilizando
+los services de las sesiones 3 y 4 sin duplicar una línea de negocio.
+
+**Volumen:** `git diff --stat 3e8e9b5..HEAD` → 47 archivos, +6 239 / −119.
+
+## Prompt 0 — Verificación y dependencias (commits `601dfba`, `5b0f794`)
+
+Repo verde de partida: `lint`, `type-check` y `build` en exit 0, stack local
+arriba y `knowledge_embeddings` con sus 24 fichas. `mcp/` nace con su propio
+`package.json` y las versiones **pineadas** que exige la lección 4 de la spec:
+`@modelcontextprotocol/sdk ^1.29.0` (resolvió a 1.30.0), `zod ^3.25.76` y
+`tsup ^8.5.1` — el SDK 1.x no es compatible con zod 4.
+
+Desviación menor del estado de partida: `.claude/skills/` **ya existía** con
+skills personales del usuario (no del proyecto). Las cuatro de gobernanza se
+agregaron junto a ellas; solo las del proyecto se commitearon.
+
+Hallazgo del Inspector: además de la UI web, tiene modo `--cli`. Toda la
+verificación de la sesión quedó así reproducible en comandos, no en capturas.
+
+## Fase 5.1 — Skills de gobernanza (commit `c0441dc`)
+
+Cuatro `SKILL.md` en `.claude/skills/`, commiteados desde el primer día
+(lección 1: en ReadHub quedaron sin versionar y se perdieron del historial).
+El riesgo real de esta fase era que se pisaran entre sí, así que cada una se
+escribió contra el deslinde de las otras tres:
+
+| Skill | Cuándo actúa | Salida | Qué NO hace |
+|---|---|---|---|
+| `mercadotech-architecture-enforcer` | ANTES de crear o mover un archivo | PERMITIDO / RECHAZADO + ubicación correcta | no juzga estilo ni naming |
+| `mercadotech-code-reviewer` | DESPUÉS de escribir | informe /10 por severidad | no bloquea, no corre lint |
+| `mercadotech-automatic-validator` | al cerrar una fase | APROBADA / FALLIDA | no explica, no pondera |
+| `mercadotech-tech-lead` | ante decisiones de diseño | scorecard ponderado | no es binario, no va archivo por archivo |
+
+Las cuatro dicen explícitamente que **reportan, no editan código**, y las
+cuatro cierran con "ante contradicción, gana `CLAUDE.md`". Cada regla es
+verificable con un grep o una lectura, nunca un principio abstracto.
+
+**Decisión 9 de la spec, refutada en la práctica:** la spec daba por hecho que
+hacía falta reiniciar la sesión para que Claude Code descubriera las Skills.
+En esta ejecución el harness las detectó **en caliente**, una a una, según se
+iban escribiendo, y el laboratorio de la 5.6 pudo correrse en la misma
+conversación. Queda anotado como comportamiento observado, no como garantía:
+si una Skill no se activa al nombrarla, reiniciar sigue siendo el remedio.
+
+## Fase 5.2 — Scaffolding del servidor (commit `a67b829`)
+
+El mostrador vacío pero conectando. Toda la fontanería delicada resuelta de
+una vez, con `src/lib/{tool-result,errors,safe}.ts` y `src/context.ts`.
+
+**Desviación deliberada de la spec, y es importante.** La spec pedía la
+redirección de `console.log` *literalmente en la línea 1 de `index.ts`*. Eso
+**no funciona en ESM**: los `import` se hoistean y se evalúan antes que
+cualquier sentencia del cuerpo del módulo, así que una dependencia que loguee
+al importarse ya habría corrompido stdout. Se resolvió con
+`src/lib/stdout-guard.ts` importado como **primer módulo** — los imports sí se
+evalúan en orden. Cumple la intención de la lección 3; el porqué quedó escrito
+en el propio archivo.
+
+Se reutilizó tal cual el patrón de `scripts/index-all.ts` para el entorno
+(`loadEnvLocal` sobre la `.env.local` de la RAÍZ, una sola fuente de secretos)
+y para el cliente admin propio: `lib/supabase/admin.ts` trae
+`import "server-only"`, que lanza bajo Node/tsx puro.
+
+Se agregó `mcp/scripts/rpc.mjs`, un cliente JSON-RPC mínimo que hace el
+handshake y ejecuta métodos en orden. **Aborta si detecta que algo ensució
+stdout**, así que la pureza del canal se verifica sola en cada corrida.
+
+## Fase 5.3 — Diez tools (commits `70fb01a`, `b5bd3a4`)
+
+Un archivo por tool, registro central en `tools/index.ts`, inputs con zod,
+salidas por `tool-result` y todo envuelto en `safe.ts`. Cinco corren con
+`anon` y cinco necesitan `admin`, cada una con el comentario de la política
+RLS que lo obliga escrito al lado.
+
+Las derivaciones viven en `mcp/src/shared/` y están declaradas como tales
+(lección 6): `stats.ts` (categorías con conteo, agregados, top de vendidos),
+`product-detail.ts` (la forma única de "detalle", compartida por la tool, el
+resource y un prompt) y `faq.ts`. **Cero services nuevos en el proyecto web.**
+
+### El problema real de la sesión: `service_role` no es acceso total
+
+Al ejercitar las tools, cuatro fallaron con `42501 permission denied`. La
+causa no estaba en el MCP sino en un supuesto equivocado del esquema:
+
+> **Bypasear RLS no es lo mismo que tener privilegios de tabla.** `service_role`
+> ignora las políticas, pero Postgres sigue exigiendo el `GRANT`.
+
+Hasta la sesión 4 el único consumidor era la web, que corre como
+`authenticated` — el rol al que el esquema sí le había dado todo. El servidor
+MCP es el **primer consumidor del proyecto que corre como `service_role`**, y
+por eso nadie lo había visto. `supabase/policies.sql` solo le concedía cuatro
+tablas.
+
+Arreglarlo exigía una migración, y la sesión 5 tenía prohibido tocar la base
+de datos. Se planteó la disyuntiva y **se aprobó explícitamente la desviación**
+antes de aplicarla: la migración
+`20260828200750_grant_service_role_mcp_reads.sql` concede **solo SELECT** sobre
+`orders`, `order_items`, `product_images`, `reviews` y `profiles`, más EXECUTE
+sobre `match_knowledge`. Nada de escritura: el servidor es de solo lectura.
+`product_images` y `reviews` ya eran públicas para anon, así que ahí solo se
+alineó `service_role` con lo que cualquier visitante ya podía leer; `profiles`
+no es pública y se concede exclusivamente para el resource de vendedores, que
+proyecta `display_name` y nada más.
+
+Efecto colateral del `db reset`: se vacían `knowledge_embeddings` y los
+archivos de Storage. Hubo que volver a correr `npx tsx scripts/index-all.ts` y
+`npm run db:images`.
+
+### Otras desviaciones, por el esquema real
+
+La spec asumía columnas que **no existen**: `products.model`, `products.specs`
+y `reviews.title`. Las tools se ajustaron a los campos reales (la ficha técnica
+vive dentro de `description`), con el porqué comentado en el código.
+
+## Fase 5.4 — Siete resources y cinco Prompts MCP (commit `832283c`)
+
+Los dos templates (`products/{id}`, `sellers/{sellerId}`) implementan el
+callback `list`, así que sus instancias reales aparecen en `resources/list`:
+12 productos y 2 vendedores además de los 5 estáticos.
+
+La prueba que más valía la pena: **con `supabase stop`, `resources/list` sigue
+respondiendo**. `info` entrega su contenido completo (es estático a propósito,
+justamente para eso) y cada resource caído devuelve su error capturado en
+lugar de tumbar el listado entero (lección 7).
+
+Los cinco prompts son **formularios, no motores**: obtienen el contenido por
+las mismas funciones compartidas de la 5.3 y remiten a las tools existentes
+para profundizar. Ninguno reimplementa recuperación ni el pipeline RAG. La
+terminología se cuidó en código y documentación (lección 2): son "Prompts
+MCP", nunca "Skills".
+
+## Fase 5.5 — Registro y documentación (commit `791c4a7`)
+
+`.mcp.json` en la raíz y `mcp/README.md` completo: arquitectura, las 10
+decisiones con su porqué, las tablas de tools/resources/prompts con su service
+reutilizado y su cliente, y la tabla de síntomas.
+
+El build de producción se validó de verdad: `node mcp/dist/index.js` responde
+idéntico al fuente (`rpc.mjs` acepta `MCP_TARGET=dist` para ejercitarlo).
+
+**Verificación con el Inspector, con una salvedad honesta:** el Inspector se
+usó en modo `--cli`, no con su interfaz web. Toda la evidencia de esta sesión
+salió de JSON-RPC sobre stdio — misma superficie que ejercita la UI, y con la
+ventaja de quedar reproducible en un comando.
+
+## Fase 5.6 — Laboratorio de validación (commits `965a5b0`, `648bed0`, `804ba88`, `31fb253`)
+
+Las Skills auditando el código real. Detalle completo en
+[`docs/REVISION_S5.md`](REVISION_S5.md).
+
+**11 hallazgos: 5 corregidos, 5 aceptados como deuda con su justificación, 1
+falso positivo refutado.** Los tres corregidos en esta fase, de menor a mayor
+riesgo:
+
+1. **ESLint analizaba `mcp/dist/`**, el bundle de tsup: 59 errores de código
+   generado. La primera pasada del validator dio **FALLIDA** por esto, se
+   corrigió y se re-invocó — el ciclo funcionando como debe.
+2. **Los cuatro greps de arquitectura de `CLAUDE.md` daban falsos positivos**:
+   matcheaban los *comentarios* que explican por qué un archivo NO importa
+   algo. Anclados a `^import`. Un gate con falsos positivos deja de leerse.
+3. **Los tres Route Handlers perdían el diagnóstico de todo error de
+   Supabase.** `err instanceof Error` es **false** para un PostgrestError
+   (objeto plano `{message, code, details, hint}`) y los services lo relanzan
+   tal cual: cualquier fallo de base de datos llegaba al usuario como "Error
+   desconocido…". El servidor MCP se golpeó con lo mismo primero; la revisión
+   lo encontró arrastrado desde la sesión 4. Ahora `lib/api-response.ts` expone
+   `errorMessage()` y conserva hasta la sugerencia literal de Postgres.
+
+Scorecard del tech-lead: **8.45/10**. Code review: **8.5/10**.
+
+Vale la pena dejarlo escrito: **la arquitectura pasó su prueba de fuego sin
+saberlo.** Un consumidor completamente nuevo, fuera de Next, se conectó a los
+15 services sin reescribir una línea de negocio. Eso solo funciona porque la
+sesión 3 decidió que el cliente Supabase fuera inyectable y siempre el último
+parámetro.
+
+## Criterios de aceptación
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| El Inspector lista y ejecuta las 10 tools sin errores con datos del seed | ✅ | Modo `--cli` + `rpc.mjs`. `search_products {"search":"laptop"}` → 3 productos; `compare_products` con las 2 laptops → rango S/1899–2199; `get_order_status c0000000-…01` → entregado con 2 ítems snapshot |
+| `ask_assistant` con la misma calidad que la UI web | ✅ | `{"query":"¿cómo devuelvo un producto?","mode":"soporte"}` → cita `[1]`, el artículo de devoluciones, con los 7 días calendario correctos |
+| Con Supabase detenido, `resources/list` sigue respondiendo | ✅ | `info` completo; `faq` con su error capturado; el listado nunca se cae |
+| Ninguna tool/resource expone teléfono, email ni nombre de comprador | ✅ | Revisión manual de salidas + ítem B1 del validator. Salidas proyectadas campo por campo, nunca la fila completa |
+| El validator termina en APROBADA sobre el estado final | ✅ | `docs/REVISION_S5.md`, sección final |
+| `type-check` de la raíz Y de `mcp/`; el build de `mcp/` arranca | ✅ | Ambos exit 0; `node mcp/dist/index.js` conecta y responde |
+| Búsqueda semántica de la misma calidad que la pestaña IA | ✅ | "audífonos para el gimnasio" → Logitech G435 primero (0.4211) |
+
+## Deuda técnica y limitaciones conocidas
+
+1. **`get_order_status` no exige autenticación.** Cualquiera con el id del
+   pedido lo consulta. Aceptable porque el servidor corre local contra el seed
+   del curso; **en producción no bastaría**. Está advertido en el código y en
+   el README. La sesión 8 lo reutiliza para el agente de voz.
+2. **`mercadotech://faq` es una derivación, no un service.** No existe un
+   "listar FAQ publicada" en la web. Si nace una pantalla de FAQ, ese archivo
+   debe pasar a llamar al service nuevo.
+3. **`tool.handler as never`** en el registro central: único punto del servidor
+   donde se apaga el compilador. Los tipos reales los garantiza cada archivo.
+4. **`listAllActiveProducts` pagina en cliente** para calcular agregados.
+   Trivial con 16 productos; a escala pide una vista SQL.
+5. **Vulnerabilidad low en `esbuild`** (transitiva de `tsup`). `npm audit fix`
+   movería la versión que la spec obliga a pinear.
+6. **`useProductForm.ts` con 302 líneas** orquestando 4 services. Refactor
+   propuesto para después de que existan tests.
+7. **Heredada, y ahora la que más pesa:** sin tests automatizados. Esta sesión
+   agregó ~1.500 líneas en `mcp/` verificadas solo a mano.
+
+## Qué quedó fuera, a propósito
+
+* **Monorepo** (npm workspaces + Turborepo, como ReadHub). La nota de la spec
+  lo deja opcional: `mcp/` importando por alias es suficiente para el
+  laboratorio, y el tech-lead no vio razón para pagar la complejidad hoy.
+* **Tools de escritura.** El servidor es de solo lectura, sin excepciones.
+* **Agente de voz** (sesión 8) y **tests automatizados** (sesión 6).
+* **Vista `public_profiles`.** Resolvería la deuda de `profiles` para web y MCP
+  a la vez, pero pertenece a la sesión 7.
+
+## Pendientes
+
+**Heredado de la sesión 1 (no ejecutada):** siguen sin existir
+`docs/COSTOS.md` ni `docs/PROMPTS.md`. No bloquea nada.
+
+**Para la sesión 6 (testing):** Vitest y Playwright. Prioridades que deja esta
+sesión: cubrir `mcp/src/shared/` (las derivaciones son el código más frágil del
+servidor, porque componen a mano), el nuevo `errorMessage()` de
+`lib/api-response.ts`, y `useProductForm` antes de refactorizarlo.
+
+---
+
 # Sesión 4 — RAG con Hugging Face (2026-08-26)
 
 MercadoTech gana búsqueda semántica y dos asistentes conversacionales
