@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { apiError } from "@/lib/api-response";
+import { apiError, errorMessage } from "@/lib/api-response";
 import { CHAT_QUERY_MAX_CHARS } from "@/lib/constants/ai";
 import { ask } from "@/services/chat.service";
 import type { ChatMode } from "@/types/chat";
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     return apiError(
       500,
       "chat_failed",
-      err instanceof Error ? err.message : "Error desconocido al conversar.",
+      errorMessage(err, "Error desconocido al conversar."),
     );
   }
 }

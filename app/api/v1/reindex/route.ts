@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { apiError } from "@/lib/api-response";
+import { apiError, errorMessage } from "@/lib/api-response";
 import {
   indexKnowledgeSource,
   type KnowledgeSourceType,
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     return apiError(
       500,
       "reindex_failed",
-      err instanceof Error ? err.message : "Error desconocido al reindexar.",
+      errorMessage(err, "Error desconocido al reindexar."),
     );
   }
 }
