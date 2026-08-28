@@ -115,10 +115,24 @@ export function registerPrompts(server: McpServer): number {
           getProductDetail(productId, anon),
           listQuestions(productId, anon),
         ]);
+        // Se proyecta campo por campo A PROPOSITO: la fila cruda de `questions`
+        // incluye `user_id`, el identificador del comprador que preguntó, y
+        // ninguna salida de este servidor puede llevar identidad de comprador.
+        // Embeber la fila entera filtraba ese id al modelo.
+        const publicShape = (question: (typeof questions)[number]) => ({
+          id: question.id,
+          question: question.question,
+          answer: question.answer,
+          answeredAt: question.answered_at,
+        });
+
         return {
           producto: detail,
-          preguntaAResponder: questions.find((question) => question.id === questionId) ?? null,
-          otrasPreguntas: questions.filter((question) => question.id !== questionId),
+          preguntaAResponder:
+            questions.filter((question) => question.id === questionId).map(publicShape)[0] ?? null,
+          otrasPreguntas: questions
+            .filter((question) => question.id !== questionId)
+            .map(publicShape),
         };
       });
       return userMessage(
@@ -144,7 +158,17 @@ export function registerPrompts(server: McpServer): number {
     },
     async ({ productId }) => {
       const { anon } = createContext();
-      const data = await embed("RESEÑAS", () => listReviews(productId, anon));
+      // Proyección explícita, misma razón que en redactar_respuesta_pregunta:
+      // la fila cruda de `reviews` incluye `buyer_id`. El service ya anonimiza
+      // el nombre con `author_label`, pero el id seguía viajando.
+      const data = await embed("RESEÑAS", async () =>
+        (await listReviews(productId, anon)).map((review) => ({
+          rating: review.rating,
+          comment: review.comment,
+          author: review.author_label,
+          createdAt: review.created_at,
+        })),
+      );
       return userMessage(
         "Resume lo que dicen los compradores de este producto.\n\n" +
           "Reglas:\n" +

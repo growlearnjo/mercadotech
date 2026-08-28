@@ -39,6 +39,11 @@ export async function getProductDetail(productId: string, supabase: Client) {
     // tiene SELECT público (deuda documentada, bitácora S3) y de todos modos
     // ninguna salida de este servidor lleva identidad de comprador.
     questions: questions.map((question) => ({
+      // El id se expone para que el prompt `redactar_respuesta_pregunta` sea
+      // usable: sin él, un cliente MCP no tiene forma de saber qué questionId
+      // pasarle. No es un dato privado; el `user_id` de quien preguntó SÍ lo
+      // es, y por eso nunca sale de aquí.
+      id: question.id,
       question: question.question,
       answer: question.answer,
       answeredAt: question.answered_at,
