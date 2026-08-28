@@ -93,11 +93,16 @@ Reglas de independencia (aplican en todas las sesiones):
 Estos cuatro greps deben devolver SIEMPRE vacío:
 
 ```bash
-grep -rl "@/lib/supabase" components hooks   # solo services/ y app/ usan clientes
-grep -rl "from \"@/services" components      # los componentes no llaman services
-grep -rln "@huggingface" --include="*.ts" . | grep -v node_modules | grep -v lib/ai
-grep -rl "lib/supabase/admin" app components hooks services | grep -v api/v1
+grep -rlE "^import .*@/lib/supabase" components hooks   # solo services/ y app/ usan clientes
+grep -rlE "^import .*from \"@/services" components      # los componentes no llaman services
+grep -rlE "^import .*@huggingface" --include="*.ts" . | grep -v node_modules | grep -v lib/ai
+grep -rlE "^import .*lib/supabase/admin" app components hooks services | grep -v api/v1
 ```
+
+Los cuatro anclan en `^import` a propósito: la versión sin ancla marcaba los
+COMENTARIOS que explican por qué un archivo NO importa algo (pasaba en
+`embedding.service.ts` y `vector-search.service.ts`), y un gate con falsos
+positivos deja de leerse.
 
 ## Convenciones de código
 
