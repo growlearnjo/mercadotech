@@ -15,7 +15,13 @@ for (let i = 2; i < process.argv.length; i += 2) {
   calls.push({ method: process.argv[i], params: JSON.parse(process.argv[i + 1] ?? "{}") });
 }
 
-const child = spawn("npx", ["tsx", "mcp/src/index.ts"], {
+// MCP_TARGET=dist prueba el build de producción; por defecto, el fuente con tsx.
+const target =
+  process.env.MCP_TARGET === "dist"
+    ? { cmd: "node", args: ["mcp/dist/index.js"] }
+    : { cmd: "npx", args: ["tsx", "mcp/src/index.ts"] };
+
+const child = spawn(target.cmd, target.args, {
   stdio: ["pipe", "pipe", "inherit"],
   shell: process.platform === "win32",
 });
