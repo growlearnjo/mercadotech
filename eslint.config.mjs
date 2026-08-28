@@ -38,6 +38,9 @@ const eslintConfig = [
       // Artefactos generados por el CLI de Supabase (`supabase start`):
       // bundles minificados del edge runtime, no son codigo del proyecto.
       "supabase/.temp/**",
+      // Bundle del servidor MCP producido por tsup (`npm run build` en mcp/):
+      // codigo generado, ya cubierto por el lint de su fuente en mcp/src/.
+      "mcp/dist/**",
     ],
   },
 ];
