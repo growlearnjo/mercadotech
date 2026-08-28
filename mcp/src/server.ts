@@ -4,10 +4,12 @@
  * propósito: conectar sin errores ES el éxito de esta fase.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { SERVER_NAME, SERVER_VERSION } from "./server-meta";
+import { registerResources } from "./resources/index";
+import { registerPrompts } from "./prompts/index";
 import { registerTools } from "./tools/index";
 
-export const SERVER_NAME = "mercadotech";
-export const SERVER_VERSION = "0.1.0";
+export { SERVER_NAME, SERVER_VERSION } from "./server-meta";
 
 export function createServer(): McpServer {
   const server = new McpServer(
@@ -23,6 +25,8 @@ export function createServer(): McpServer {
   );
 
   registerTools(server);
+  registerResources(server);
+  registerPrompts(server);
 
   return server;
 }
