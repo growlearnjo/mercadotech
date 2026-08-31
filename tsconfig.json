@@ -23,5 +23,14 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    // El servidor MCP es un proyecto Node APARTE, con su propio tsconfig y su
+    // propio `npm run type-check` (que el CI ejecuta en su carpeta). Sin esta
+    // exclusión, el type-check de la raíz arrastra mcp/tsup.config.ts y falla
+    // con "Cannot find module 'tsup'" en cualquier máquina donde
+    // mcp/node_modules no esté instalado — que es exactamente lo que pasa en
+    // el runner de CI.
+    "mcp"
+  ]
 }
