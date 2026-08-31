@@ -25,8 +25,10 @@ npm run dev         # servidor de desarrollo (Next.js, Turbopack)
 npm run build       # build de producción
 npm run lint        # ESLint
 npm run type-check  # tsc --noEmit
-npm run test        # Vitest (unit) — desde la sesión 6
-npm run test:e2e    # Playwright (E2E) — desde la sesión 6
+npm run test        # Vitest (unit): 293 tests, ~3 s, SIN red ni Docker
+npm run test:coverage    # lo mismo + reporte en coverage/
+npm run test:e2e    # Playwright (E2E) — exige `supabase db reset` antes
+npm run test:e2e:ui # el mismo runner en modo interactivo
 npm run db:types    # regenera types/database.ts desde el esquema local
 npm run db:images   # descarga imágenes de muestra y las sube a Storage
 npx tsx scripts/index-all.ts   # reindexa productos activos + FAQ publicada en knowledge_embeddings
@@ -45,6 +47,9 @@ cd mcp && npm run build && npm run type-check
 
 `db:images` existe porque el seed crea las filas de `product_images` pero no
 los archivos. Requiere el manifiesto que documenta `scripts/seed-images.mjs`.
+
+`test:e2e` corre SIEMPRE contra el Supabase local y **exige `supabase db reset`
+antes de cada corrida completa**: los specs crean pedidos y productos reales.
 
 Base de datos (Supabase CLI, requiere Docker corriendo):
 
@@ -164,6 +169,40 @@ positivos deja de leerse.
   con color de token necesita `transition-none` o se queda anclado al tema
   anterior al alternar claro/oscuro.
 
+### Reglas de testing (sesión 6)
+
+* El test unitario vive JUNTO al archivo que prueba; los E2E, en `e2e/`.
+* Los tests unitarios **inyectan el cliente Supabase por parámetro** — jamás
+  `vi.mock` de `lib/supabase/*`. `lib/ai/*` sí se mockea por módulo (no es
+  inyectable por diseño de la sesión 4): única excepción, y se comenta.
+* La suite unitaria **no toca la red**: debe pasar con Docker apagado. Un test
+  que solo pasa con el stack arriba está mal escrito.
+* **El test documenta el contrato REAL, no el deseado.** Si parece un bug, se
+  ancla con `// comportamiento actual, revisar:` y va a la bitácora; nunca se
+  cambia producción para que un test luzca mejor.
+* Los valores frontera salen de las constantes reales importadas. Las
+  aserciones de dinero salen de `formatPrice`: Intl separa "S/" del monto con
+  un espacio duro (U+00A0), invisible al leer y letal al comparar.
+* `data-testid` en kebab-case con prefijo de dominio (`kanban-column-pagado`).
+  En un componente es SOLO un atributo: ni lógica, ni estilos, ni estructura.
+* Al cerrar una feature el ciclo es **reviewer → correcciones → validator**, y
+  el validator ya corre los tests: uno rojo = FALLIDA.
+
+## Integración continua (`.github/workflows/ci.yml`, sesión 6)
+
+Cada push a `main` y cada pull request dispara dos jobs encadenados, sin
+ningún secreto: **`checks`** (type-check, lint, `test:coverage`, type-check del
+MCP; sube la cobertura como artefacto) y **`e2e`** (`needs: checks`: levanta un
+Supabase efímero, lo siembra, lee sus credenciales en caliente y corre
+Playwright en chromium contra `build && start`).
+
+`package.json` lleva `"packageManager": "npm@11.6.2"` y el workflow pinea esa
+MISMA versión antes de `npm ci`. **No se toca a la ligera:** el lockfile se
+generó con ella en Windows, y un npm más nuevo en Linux resuelve distinto las
+dependencias opcionales y rompe `npm ci`. Si se regenera el lockfile, hay que
+cambiar los dos sitios a la vez. `mcp/` está EXCLUIDO del `tsconfig.json` de la
+raíz: tiene su propio type-check, que el CI ejecuta en su carpeta.
+
 ## Skills de gobernanza (`.claude/skills/`, sesión 5)
 
 Cuatro manuales de puesto que Claude Code carga solo, según lo que se le pida.
@@ -214,13 +253,19 @@ por dentro de la página, no por el middleware (la búsqueda exacta es pública)
   compras/soporte con RAG sobre Hugging Face.
 * Sesión 5: completa (Fases 5.1–5.6). 4 Skills de gobernanza + servidor MCP de
   solo lectura (10 tools, 7 resources, 5 prompts).
-* Siguiente: sesión 6 (testing con Vitest y Playwright).
+* Sesión 6: completa (Fases 6.1–6.8). 293 tests unitarios, 14 E2E y CI en
+  GitHub Actions. Absorbió el pipeline que el plan maestro tenía como Fase 7.1.
+  Hallazgo abierto: el kanban no es usable por teclado (falta un
+  `coordinateGetter` en `OrdersKanban.tsx`); sus dos E2E están en `test.fixme`.
+* Siguiente: sesión 7 (performance, secretos y despliegue en Vercel — el CI ya
+  está hecho).
 
 Mapa de carpetas: [`docs/ESTRUCTURA.md`](docs/ESTRUCTURA.md).
 Detalle de decisiones y problemas: [`docs/BITACORA.md`](docs/BITACORA.md).
 Checklist de calidad: [`docs/SESION3_CHECKLIST.md`](docs/SESION3_CHECKLIST.md).
 Flujo RAG, casos de prueba y calibración: [`docs/RAG.md`](docs/RAG.md).
 Ciclo de revisión de la sesión 5: [`docs/REVISION_S5.md`](docs/REVISION_S5.md).
+Metodología de depuración y errores típicos: [`docs/DEBUGGING.md`](docs/DEBUGGING.md).
 Servidor MCP (arquitectura, decisiones y síntomas): [`mcp/README.md`](mcp/README.md).
 
 ## Regla de sesiones

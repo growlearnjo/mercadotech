@@ -6,6 +6,324 @@ qué se dejó fuera a propósito.
 
 ---
 
+# Sesión 6 — Testing y CI con GitHub Actions (2026-08-31)
+
+MercadoTech no gana ninguna pantalla en esta sesión. Gana una **red de
+seguridad y un portero**: 293 tests unitarios que corren en 3 segundos sin
+tocar la red, 14 tests E2E que recorren la tienda en un navegador real contra
+el Supabase local, y un pipeline de GitHub Actions que ejecuta todo en cada
+push y cada pull request. Aquí es donde la inyección del cliente Supabase
+decidida en la sesión 2 paga su dividendo: los services se prueban sin base de
+datos.
+
+**Volumen:** `git diff --stat eed65ff..HEAD` → 71 archivos, +8 586 / −210.
+
+**Cambio de alcance:** esta sesión ABSORBIÓ el pipeline de CI que el plan
+maestro tenía como Fase 7.1 (decisión del docente, 2026-08-28). La sesión 7
+conserva performance, secretos, despliegue en Vercel y documentación final.
+
+## Prompt 0 — Remoto de GitHub y herramientas (commits `dda2d07`, `d6bce64`)
+
+El repositorio pasó de ser solo local a tener remoto:
+`https://github.com/growlearnjo/mercadotech`. Instalados `vitest@4.1.11`,
+`@vitest/coverage-v8@4.1.11` y `@playwright/test@1.62.1`, más los 3
+navegadores en local (chromium, firefox 153, webkit 26.5). Sin configuración
+todavía: eso es 6.1 y 6.4.
+
+**Problema real.** El primer `git push` falló con `403 Permission to
+growlearnjo/mercadotech.git denied to cosmostories`: Git Credential Manager
+tenía guardada la credencial de otra cuenta de GitHub. **Solución:** borrar la
+entrada con `git credential reject` y dejar que el navegador reautorice. No se
+intentó ningún flujo alternativo con tokens.
+
+**Segundo problema.** `npm run lint` empezó a reportar 19 557 problemas:
+ESLint estaba recorriendo `.claude/worktrees/`, un worktree efímero de Claude
+Code que es una copia completa del repo con su propio `node_modules`. El glob
+`node_modules/**` de la config solo cubre el de la raíz. **Solución:**
+`.claude/worktrees/**` a los `ignores`.
+
+## Fase 6.1 — Infraestructura de Vitest (commit `f335433`)
+
+`vitest.config.mts` con environment `node` (sin jsdom ni Testing Library:
+esta sesión no testea componentes), alias `@` → raíz igual que el tsconfig,
+`include: **/*.test.ts`, exclude de `node_modules`/`mcp`/`e2e`/`.next`/
+`.claude`, y coverage v8 (`text` + `html`) limitada a `lib/` y `services/`.
+Scripts `test`, `test:watch` y `test:coverage`.
+
+**Desviación de la spec.** El archivo es `.mts`, no `.ts`. Como `.ts`, Vite lo
+carga como CommonJS (la raíz no declara `"type": "module"`) y avisa de que su
+sintaxis ESM será un error en una versión futura. `.mts` es ESM sin
+ambigüedad y Vitest lo descubre solo.
+
+## Fase 6.2 — Tests de lógica pura (commit `fee0a5a`)
+
+80 casos sobre `lib/validators/auth.ts`, `lib/validators/product.ts`,
+`lib/utils.ts`, `lib/ai/context-builder.ts` y `lib/ai/prompts.ts`. Cero mocks
+(ningún archivo resultó impuro) y cero números escritos a mano: los valores
+frontera se importan de las constantes reales, así que si
+`PASSWORD_MIN_LENGTH` sube a 10 los tests siguen probando "uno menos / justo
+el mínimo" sin tocarse.
+
+**Cobertura: 100 % de statements, ramas, funciones y líneas** en esos cinco
+archivos (103/103, 69/69, 15/15, 93/93).
+
+**Hallazgo que cambió la Fase 6.5.** `formatPrice` no devuelve `"S/ 0.00"`:
+devuelve `"S/"` + U+00A0 + `"0.00"`. Intl separa el símbolo del monto con un
+**espacio duro**. Los tests fallaron con `expected 'S/ 0.00' to be 'S/ 0.00'`,
+dos cadenas idénticas a la vista. Queda anclado con un test explícito
+(`.not.toBe("S/ 0.00")`) y una constante `NBSP` escrita como escape, no como
+carácter invisible. Consecuencia: las aserciones de dinero de los E2E salen de
+`formatPrice`, nunca se teclean.
+
+## Fase 6.3 — Services con Supabase mockeado (commit `6c39be9`)
+
+`services/test-utils/supabase-mock.ts`: fábrica encadenable y "thenable" que
+imita `from().select().eq().maybeSingle()`, `rpc()`,
+`storage.from().getPublicUrl()` y `auth.*`. Se programa por tabla y por método
+terminal, y APUNTA todo lo que le piden (`inserts`, `updates`, `upserts`,
+`deletes`, `filters`, `calls`, `rpcCalls`, `authCalls`) para poder afirmarlo.
+
+213 casos nuevos sobre cart, order, product, seller, el helper del kanban,
+review, question, favorite, auth, embedding, vector-search y chat.
+
+**Cobertura de `services/`: 89.89 % de líneas** (267/297), 89 % de statements,
+84.76 % de ramas — sobre la meta de 80 %. Los tres services sin tocar
+(`category`, `indexing-trigger`, `ticket`, 0 %) no figuran en la tabla de la
+spec.
+
+**Mockeo de dos niveles, ejercido.** El cliente Supabase se INYECTA por el
+último parámetro en los 12 archivos; `vi.mock` aparece exactamente en tres
+(`embedding`, `vector-search`, `chat`) y solo sobre `lib/ai/*`, con el porqué
+escrito arriba de cada uno: esos services importan el proveedor de IA directo
+por diseño de la sesión 4, así que no hay puerta que abrir y hay que
+sustituir el módulo entero.
+
+**Verificado sin red, de verdad:** `supabase stop` → `Test-NetConnection
+127.0.0.1:54321` = `False`, `docker ps -q` = 0 contenedores → `npm run test`
+= 293/293. Ningún test necesitó la base de datos.
+
+**Único cambio de producción:** `export` a `validateTransition` en
+`hooks/useSellerOrders.ts` (decisión 4), sin tocar su lógica.
+
+### Comportamiento actual, revisar
+
+Dos hallazgos anclados tal cual, no corregidos:
+
+1. **`cart.service.addItem` con stock 0 acepta 1 unidad.**
+   `Math.max(1, Math.min(desired, 0))` da 1: el piso gana al tope. El carrito
+   acepta algo que el checkout va a rechazar. La UI lo tapa deshabilitando el
+   botón (cubierto por el E2E negativo de la 6.5).
+2. **`validateTransition("cancelado", "cancelado")` devuelve `{ ok: true }`.**
+   La rama `from === to` va antes de la de `cancelado`. Inalcanzable desde la
+   UI: soltar una tarjeta en su propia columna no dispara ningún cambio.
+
+## Fase 6.4 — Infraestructura de Playwright (commit `f6a5e9b`)
+
+`playwright.config.ts` con el patrón de ReadHub, `e2e/data/{users.ts,
+product-image.jpg}`, fixture con los 7 Page Objects y `loginAs`, y el smoke
+`home.spec.ts`. Scripts `test:e2e` y `test:e2e:ui`.
+
+21 componentes tocados **solo con atributos `data-testid`** (kebab-case con
+prefijo de dominio): ni lógica, ni estilos, ni estructura. Antes había cero en
+todo el repo.
+
+**Dato del seed que corrige un supuesto.** El único pedido en `pagado` es
+`c…03`, y es de **seller2 (GamerZone Lima)**, comprado por **buyer2** — no de
+seller1. Leído del seed, no asumido: el spec de la 6.6 con seller1 habría
+corrido contra una columna vacía y pasado sin probar nada.
+
+**Tres ajustes que el entorno obligó:**
+- Timeout de test a 60 s: `next dev` compila cada ruta al primer pedido y con
+  los 3 navegadores golpeando a la vez la home se pasaba de los 30 s.
+- `import.meta.url` → `__dirname` en `SellerProductsPage.ts`: Playwright carga
+  estos `.ts` como CommonJS y `import.meta` ahí es error de sintaxis.
+- `react-hooks/rules-of-hooks` apagada solo en `e2e/`: la fixture recibe una
+  función `use()` que la regla confunde con un hook fuera de componente.
+
+## Fase 6.5 — E2E del comprador (commit `8b09ba9`)
+
+`buyer-flow.spec.ts` con los 8 pasos como `test.step` (login → filtrar
+Laptops → abrir producto con stock → agregar 2 → carrito y subtotal →
+checkout → detalle "Pendiente" con snapshots → mis pedidos → logout), más un
+paso extra que comprueba que el RPC vació el carrito en la misma transacción.
+`buyer-negative.spec.ts` cubre stock 0, carrito vacío, anónimo en `/carrito` y
+el detalle de producto como ruta pública.
+
+El pedido se identifica por el id que devuelve la URL de redirección, jamás
+por posición en la lista.
+
+**Detalle de la UI real que el spec no anticipaba:** con el carrito vacío la
+app no pinta el resumen con el botón deshabilitado — pinta un `EmptyState` y
+el botón NO existe. El test afirma la ausencia, que es lo que la app hace.
+
+**Demostración del reporte:** rompiendo `toHaveText("Sin stock por ahora.")`,
+el reporte HTML guardó `test-failed-1.png` con el detalle del Monitor Samsung
+Odyssey, su aviso de stock y el botón en gris. Revertido.
+
+## Fase 6.6 — E2E del vendedor (commit `4a06500`)
+
+`seller-flow.spec.ts` publica un producto con imagen (título único por
+timestamp) y lo verifica en la tabla del vendedor y en el catálogo público.
+`seller-negative.spec.ts` cubre la expulsión del comprador del panel y la
+columna `cancelado` de solo lectura.
+
+**Comportamiento real distinto del esperado:** publicar NO vuelve al listado,
+redirige a `/vendedor/productos/<id>/editar` — las imágenes necesitan el
+`product_id` para respetar la política del bucket.
+
+**Los workers de Playwright pasan a 1 siempre, no solo en CI.** La suite
+comparte UNA base de datos local y en paralelo los specs se pisaban (3 tests
+en timeout); además el dev server se satura compilando rutas bajo demanda.
+
+### HALLAZGO DE ACCESIBILIDAD — el kanban no es usable por teclado
+
+`components/seller/OrdersKanban.tsx` registra el `KeyboardSensor` de dnd-kit
+pero **no le pasa un `coordinateGetter`**. El getter por defecto desplaza la
+tarjeta **25 px por pulsación de flecha**, sin ninguna noción de columnas. Las
+columnas miden `min-w-60` (240 px) más 12 px de separación, así que una
+pulsación de `ArrowRight` la suelta sobre su propia columna, y dnd-kit lo
+anuncia literalmente en su live region:
+
+```
+Draggable item c0000000-…-03 was dropped over droppable area pagado
+```
+
+Comprobado empíricamente: con **14 pulsaciones seguidas** (≈350 px) la tarjeta
+cruza y el cambio persiste. Ningún usuario de teclado va a descubrir eso.
+
+Es un defecto y no una limitación del test: el otro drag & drop del proyecto,
+`SortableImageGallery`, SÍ pasa `coordinateGetter: sortableKeyboardCoordinates`
+(línea 143). La galería es accesible por teclado; el kanban no. La diferencia
+es una línea.
+
+**Qué se hizo.** La decisión 9 prohíbe resolverlo con `mouse.down/move/up`
+—enmascararía justo lo que el test existe para detectar— y corregir
+`OrdersKanban.tsx` es cambio de producción, fuera del alcance de una fase de
+testing. Así que: los dos tests que dependen de ese camino quedan en
+`test.fixme` escritos completos y con el arreglo documentado, y se agregó uno
+que documenta el defecto actual y **se pondrá rojo el día que se corrija**,
+que es cuando hay que borrarlo y habilitar los otros dos. La regla de negocio
+que el negativo iba a cubrir (no retroceder de `enviado` a `pagado`) sí está
+probada, sin navegador, en `hooks/useSellerOrders.test.ts`.
+
+## Fase 6.7 — Pipeline de CI (commits `28ad785`, `7e5a1b1`)
+
+`.github/workflows/ci.yml` con dos jobs encadenados y **cero secretos**:
+
+* **`checks`** (15 min, sin Docker): Node 24 con caché npm, pin de
+  `npm@11.6.2`, `npm ci`, type-check, lint, `test:coverage`, type-check del
+  MCP con su propio `npm ci`, y la cobertura como artefacto 7 días con
+  `if: always()`.
+* **`e2e`** (`needs: checks`, 20 min): mismo setup, caché de
+  `~/.cache/ms-playwright` por hash del lockfile, chromium con `--with-deps`,
+  `supabase/setup-cli@v1` + `start` + `db reset`, credenciales del stack
+  efímero leídas con `supabase status -o json` + `jq`,
+  `playwright test --project=chromium`, reporte y screenshots como artefacto
+  SOLO `if: failure()` con 14 días, y `supabase stop` con `if: always()`.
+
+`packageManager: "npm@11.6.2"` en `package.json`, coincidiendo con el pin del
+workflow. Triggers `pull_request` + `push` a main + `workflow_dispatch`,
+`concurrency` con `cancel-in-progress` y `permissions: contents: read`.
+
+**Problema real: la primera corrida murió en 38 segundos.** El `type-check` de
+la raíz arrastraba `mcp/tsup.config.ts` —116 archivos de `mcp/` entraban al
+programa de TypeScript— y en el runner falla con `Cannot find module 'tsup'`,
+porque `mcp/node_modules` todavía no está instalado en ese paso. En local
+pasaba solo por accidente: esas dependencias ya estaban en disco. **Solución:**
+excluir `mcp` del `tsconfig.json` de la raíz, que es lo que decía la
+arquitectura desde la sesión 5 — `mcp/` es un proyecto Node aparte con su
+propio type-check, y el CI lo ejecuta en su carpeta.
+
+**Evidencia en la pestaña Actions:**
+
+| Corrida | Disparador | Resultado | Duración |
+|---|---|---|---|
+| CI #1 (`28ad785`) | push a main | ❌ `type-check` con `Cannot find module 'tsup'` | 38 s |
+| CI #2 (`7e5a1b1`) | push a main | ✅ Success · `checks` 43 s + `e2e` 4 m 02 s · `2 skipped, 12 passed (44.0s)` · artefacto `coverage` 125 KB | 4 m 53 s |
+| CI #3 (`e49f6ee`) | push a main | ✅ | 4 m 17 s |
+| CI #4 (PR #1 abierto) | pull_request | ✅ | 4 m 11 s |
+| CI #6 (PR #1, test roto) | pull_request | ❌ `Lint, tipos y tests unitarios failed in 41s`; `e2e` ni se lanzó (`needs: checks`) | 52 s |
+| CI #7 (PR #1, revert) | pull_request | ✅ `checks succeeded in 44s` | — |
+
+El ciclo del PR de prueba se hizo en la rama `ci-smoke` (PR #1): cambio
+trivial → verde → commit que rompe `lib/validators/auth.test.ts` a propósito →
+rojo → `git revert` → verde. **Sin merge.**
+
+## Fase 6.8 — Debugging y gates (commit `e49f6ee`)
+
+`docs/DEBUGGING.md`: el flujo síntoma → reproducir (un test que falla es la
+mejor reproducción) → leer los logs de verdad (terminal de `next dev`,
+consola, pestaña Network, `supabase logs`, Studio, y cómo leer un fallo de CI:
+qué job, qué artefacto descargar, cómo abrir el reporte de Playwright) →
+hipótesis única → fix → test verde. Más la guía de qué contexto darle a Claude
+para pedirle debugging (síntoma, pasos, log LITERAL, qué se descartó, y qué NO
+tocar), y 14 errores típicos con el mensaje literal como título, su causa y el
+primer comando. La tabla de síntomas de IA se enlaza a `docs/RAG.md`, no se
+duplica.
+
+La Skill `mercadotech-automatic-validator` pasó de marcar `npm run test` como
+`N/A (sesión 6)` a exigirlo: **un test rojo = VALIDACIÓN FALLIDA**. Y
+`npm run test:e2e` entra como condicional a que `supabase status` esté verde.
+Edición quirúrgica: solo ese ítem del checklist.
+
+**Gate demostrado.** Con `lib/utils.test.ts:33` roto a propósito, el validator
+devolvió **VALIDACIÓN FALLIDA** citando la aserción literal
+(`expected 'S/ 219.00' to be 'S/ 999.99'`) con todo lo demás en verde;
+revertido, **VALIDACIÓN APROBADA** con 293 unitarios y 12 E2E.
+
+## Números finales
+
+| Métrica | Valor |
+|---|---|
+| Tests unitarios | **293**, en 17 archivos, **3.05 s** |
+| Tests E2E | **14** (12 pasan, 2 en `fixme` por el hallazgo del kanban), **2.3 min** en local |
+| Cobertura validators + context-builder | **100 %** de ramas (63/63) |
+| Cobertura `services/` | **89.89 %** de líneas (meta: 80 %) |
+| Job `checks` en CI | 43–44 s |
+| Job `e2e` en CI | 4 m 02 s |
+| Corrida completa de CI | 4 m 11 s – 4 m 53 s |
+
+## Criterios de aceptación
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| `npm run test` verde con Docker APAGADO, con la cobertura objetivo | ✅ | `supabase stop`, puerto 54321 cerrado, 0 contenedores → 293/293. Validators 100 % ramas, services 89.89 % líneas |
+| `npm run test:e2e` verde contra Supabase local con el seed | ✅ | tras `db reset`: 12 passed, 2 skipped (2.3 min) |
+| El kanban cubierto por E2E vía teclado | ❌ | **Bloqueado por el hallazgo de accesibilidad.** Los specs están escritos y en `test.fixme`; la regla de transición sí está cubierta sin navegador |
+| Un push y un PR muestran ambos jobs verdes; un test roto los pone en rojo | ✅ | CI #2 y #3 (push), #4 y #7 (PR) verdes; #6 rojo con el test roto |
+| La Skill validator ejecuta los tests como parte del gate | ✅ | FALLIDA con el test roto, APROBADA tras revertir |
+| `npm run lint`, `npm run type-check` y `npm run build` pasan | ✅ | los tres en verde en local y en CI |
+
+## Qué quedó fuera, a propósito
+
+* **Tests de componentes React** (decisión 6): no se instalaron jsdom ni
+  Testing Library. Se instala solo lo que se usa.
+* **Tests del servidor MCP**: solo su `type-check` entra al CI.
+* **Protección de rama** (checks obligatorios para hacer merge): sesión 7.
+* **Despliegue**: sesión 7.
+* **Cualquier aserción sobre respuestas de IA** (decisión 8): sin token en CI,
+  el error controlado inline es comportamiento válido, y afirmar texto
+  generado por un modelo haría la suite intermitente por diseño.
+* Los services `category`, `indexing-trigger` y `ticket` quedan sin tests: no
+  están en la tabla de la spec y son de 10–20 líneas.
+
+## Pendientes para la sesión 7
+
+1. **Corregir el kanban por teclado**: pasar un `coordinateGetter` a
+   `KeyboardSensor` en `OrdersKanban.tsx`, borrar el test que documenta el
+   defecto y quitar los dos `test.fixme`. Es una línea de producción y
+   devuelve la accesibilidad del drag más frágil del proyecto.
+2. **Protección de rama** en GitHub: exigir `checks` y `e2e` en verde para
+   poder hacer merge a `main`. Hoy el portero avisa pero no bloquea.
+3. **Decidir sobre los dos "comportamiento actual, revisar"** de la 6.3:
+   `addItem` con stock 0 y `validateTransition` con `cancelado → cancelado`.
+4. **Visibilidad del repositorio**: quedó **Public**; la spec pedía Private
+   por ser material de curso.
+5. Cerrar el PR #1 y borrar la rama `ci-smoke` cuando ya no haga falta la
+   evidencia.
+
+---
+
 # Sesión 5 — Custom Skills y protocolo MCP (2026-08-28)
 
 MercadoTech no gana ninguna pantalla en esta sesión. Gana **dos cosas para las
