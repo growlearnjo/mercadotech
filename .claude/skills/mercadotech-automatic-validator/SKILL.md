@@ -55,8 +55,15 @@ Cualquiera positivo = FALLIDA.
 - [ ] Si existe `mcp/`: `npm run type-check` **dentro de `mcp/`** exit 0 — si
       no, FALLIDA.
 - [ ] `npm run build` exit 0 — si no, FALLIDA.
-- [ ] `npm run test` — **desde la sesión 6.** Hoy no existe: se marca
-      `N/A (sesión 6)`, y eso **no** hace fallar la validación.
+- [ ] `npm run test` exit 0 — **OBLIGATORIO desde la sesión 6.** Si no,
+      FALLIDA: pegar el nombre del test rojo y su aserción literal. La suite
+      unitaria no toca la red, así que este ítem se corre SIEMPRE, con Docker
+      encendido o apagado; que necesite el stack para pasar es en sí un fallo.
+- [ ] `npm run test:e2e` exit 0 — **solo si `supabase status` está verde.**
+      Con el stack abajo se marca `N/A (stack apagado)` y eso NO hace fallar
+      la validación; con el stack arriba, un E2E rojo = FALLIDA. Correr
+      `supabase db reset` antes: sin eso los E2E fallan por datos sucios, no
+      por el código.
 
 ## Formato de salida
 
