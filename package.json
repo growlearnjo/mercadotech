@@ -9,7 +9,10 @@
     "lint": "eslint",
     "type-check": "tsc --noEmit",
     "db:types": "supabase gen types typescript --local > types/database.ts",
-    "db:images": "node scripts/seed-images.mjs"
+    "db:images": "node scripts/seed-images.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

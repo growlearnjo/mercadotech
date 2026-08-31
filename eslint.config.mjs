@@ -38,6 +38,9 @@ const eslintConfig = [
       // Artefactos generados por el CLI de Supabase (`supabase start`):
       // bundles minificados del edge runtime, no son codigo del proyecto.
       "supabase/.temp/**",
+      // Reporte HTML de cobertura que genera Vitest (`npm run test:coverage`):
+      // artefacto regenerable, ya ignorado por git.
+      "coverage/**",
       // Worktrees efimeros que crea Claude Code: son copias completas del
       // repo (con su propio node_modules) y no son codigo del proyecto.
       ".claude/worktrees/**",
