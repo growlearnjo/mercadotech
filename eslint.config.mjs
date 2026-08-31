@@ -38,6 +38,9 @@ const eslintConfig = [
       // Artefactos generados por el CLI de Supabase (`supabase start`):
       // bundles minificados del edge runtime, no son codigo del proyecto.
       "supabase/.temp/**",
+      // Worktrees efimeros que crea Claude Code: son copias completas del
+      // repo (con su propio node_modules) y no son codigo del proyecto.
+      ".claude/worktrees/**",
       // Bundle del servidor MCP producido por tsup (`npm run build` en mcp/):
       // codigo generado, ya cubierto por el lint de su fuente en mcp/src/.
       "mcp/dist/**",
