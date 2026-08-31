@@ -243,7 +243,7 @@ propio type-check, y el CI lo ejecuta en su carpeta.
 | CI #3 (`e49f6ee`) | push a main | ✅ | 4 m 17 s |
 | CI #4 (PR #1 abierto) | pull_request | ✅ | 4 m 11 s |
 | CI #6 (PR #1, test roto) | pull_request | ❌ `Lint, tipos y tests unitarios failed in 41s`; `e2e` ni se lanzó (`needs: checks`) | 52 s |
-| CI #7 (PR #1, revert) | pull_request | ✅ `checks succeeded in 44s` | — |
+| CI #7 (PR #1, revert) | pull_request | ✅ Success · `checks succeeded in 44s` + `e2e` | 4 m 35 s |
 
 El ciclo del PR de prueba se hizo en la rama `ci-smoke` (PR #1): cambio
 trivial → verde → commit que rompe `lib/validators/auth.test.ts` a propósito →
