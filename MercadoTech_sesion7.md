@@ -2,22 +2,28 @@
 
 ## Este documento contiene la especificación completa de la sesión. Léelo completamente antes de generar cualquier código. No hagas suposiciones fuera de lo especificado.
 
+> **Cambio de alcance (2026-08-28, decidido por el docente):** el pipeline de
+> CI (antigua Fase 7.1) se construyó en la **sesión 6** como Fase 6.7 — ver
+> `MercadoTech_sesion6.md`. Esta sesión lo da por existente y verde: aquí se
+> convierte en requisito de merge (branch protection, Fase 7.4) y en la puerta
+> del deploy. La numeración 7.2–7.5 se conserva a propósito.
+
 **Prompts de la sesión (ejecutar en orden):**
 
 1. "Lee `mercadotech/MercadoTech_sesion7.md` completo y confírmame que entiendes el alcance. No generes código todavía."
-2. "Ejecuta la Fase 7.1: pipeline de CI en GitHub Actions."
-3. "Ejecuta la Fase 7.2: optimización de performance y Core Web Vitals."
-4. "Ejecuta la Fase 7.3: variables de entorno y secretos de producción."
-5. "Ejecuta la Fase 7.4: despliegue en Vercel con base de datos remota."
-6. "Ejecuta la Fase 7.5: documentación final del proyecto."
+2. "Ejecuta la Fase 7.2: optimización de performance y Core Web Vitals."
+3. "Ejecuta la Fase 7.3: variables de entorno y secretos de producción."
+4. "Ejecuta la Fase 7.4: despliegue en Vercel con base de datos remota."
+5. "Ejecuta la Fase 7.5: documentación final del proyecto."
 
 ---
 
 ## Objetivo general
 
-Llevar MercadoTech de "funciona en mi máquina" a un producto desplegado: CI que
-bloquea regresiones en cada PR, performance medida y optimizada, gestión segura
-de secretos, despliegue automático a Vercel y documentación de nivel entrega.
+Llevar MercadoTech de "funciona en mi máquina" a un producto desplegado:
+performance medida y optimizada, gestión segura de secretos, despliegue
+automático a Vercel con el CI de la sesión 6 como requisito de merge, y
+documentación de nivel entrega.
 
 ## Objetivos específicos
 
@@ -30,38 +36,13 @@ de secretos, despliegue automático a Vercel y documentación de nivel entrega.
 
 # FASES
 
-## Fase 7.1 — Pipeline de CI (GitHub Actions)
+## Fase 7.1 — Pipeline de CI (GitHub Actions) — MOVIDA A LA SESIÓN 6
 
-**Prompt sugerido:** "Ejecuta la Fase 7.1 de `MercadoTech_sesion7.md`."
-
-`.github/workflows/ci.yml`, dos jobs encadenados (patrón probado en ReadHub):
-
-**Job `checks`** (rápido, sin Docker):
-1. Checkout + setup Node 20+ con caché de npm.
-2. **Pinnear la versión de npm** a la del `packageManager` del package.json
-   (lección ReadHub: lockfile generado en Windows + npm más nuevo en Linux =
-   "Missing from lock file" por deps opcionales).
-3. `npm ci` → `npm run type-check` → `npm run lint` → `npm run test -- --coverage`.
-4. Subir cobertura como artefacto (retención 7 días).
-
-**Job `e2e`** (needs: checks):
-1. Instalar Chromium de Playwright (solo chromium en CI; con caché por lockfile).
-2. Levantar **Supabase local efímero** vía `supabase/setup-cli` + Docker del
-   runner: `supabase start` → `supabase db reset` (migraciones + seed).
-3. Leer credenciales dinámicamente de `supabase status -o json` (NO son
-   secretos: son las claves estándar de cualquier stack local).
-4. Correr `npx playwright test --project=chromium` con esas env vars.
-5. Subir reporte HTML + screenshots SOLO si falló (retención 14 días).
-6. `supabase stop` en `if: always()`.
-
-Extras del workflow: triggers `pull_request` + `push` a main + `workflow_dispatch`;
-`concurrency` con `cancel-in-progress`; `permissions: contents: read`;
-timeouts por job (15/20 min).
-
-Nota sobre IA en CI: los E2E NO deben depender de `HUGGINGFACEHUB_API_TOKEN`
-(el chat con error controlado es comportamiento válido y testeable). Si se
-quiere probar RAG real en CI, hacerlo en un workflow manual aparte con el token
-como secret.
+Construida como **Fase 6.7** de `MercadoTech_sesion6.md` (decisión del docente,
+2026-08-28): `.github/workflows/ci.yml` con los jobs `checks` y `e2e`
+(Supabase efímero, credenciales dinámicas, pin de npm contra el lockfile, sin
+secretos) ya existe y corre en cada push/PR. Esta sesión lo consume: la
+Fase 7.4 lo vuelve requisito de merge (branch protection) y puerta del deploy.
 
 ## Fase 7.2 — Performance y Core Web Vitals
 
@@ -113,7 +94,7 @@ como secret.
 2. Conectar el repo a Vercel: framework Next.js, build `npm run build`;
    configurar las env vars de la Fase 7.3 por entorno (Production/Preview).
 3. Flujo de despliegue: cada PR → deploy de Preview con URL propia; merge a
-   `main` → deploy a Producción. El CI de la Fase 7.1 es requisito de merge
+   `main` → deploy a Producción. El CI de la sesión 6 (Fase 6.7) es requisito de merge
    (branch protection: checks verdes obligatorios — documentar la configuración).
 4. Smoke test post-deploy (checklist en `docs/DEPLOY.md`): home carga; login
    con usuario real; catálogo lista; detalle abre; chat responde o falla
@@ -149,7 +130,7 @@ como secret.
 
 ## Entregables
 
-1. `.github/workflows/ci.yml` con ambos jobs verdes en GitHub.
+1. Branch protection activa: los jobs `checks` y `e2e` (sesión 6) como checks obligatorios para merge a `main`.
 2. `docs/PERFORMANCE.md` con métricas antes/después y objetivos alcanzados.
 3. `docs/DEPLOY.md` (variables, flujo, smoke tests, rollback).
 4. App desplegada en Vercel (URL de producción + previews por PR).
