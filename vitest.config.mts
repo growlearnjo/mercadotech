@@ -1,18 +1,20 @@
 // Configuración de Vitest (Fase 6.1). El taller de pruebas unitarias:
 // abre en milisegundos, sin red y sin base de datos.
 //
+// Extensión .mts y no .ts (desviación menor de la tabla de la spec): la raíz
+// no declara `"type": "module"`, así que Vite cargaría un `.ts` como
+// CommonJS y avisa de que la sintaxis ESM de aquí será un error en una
+// versión futura. `.mts` es ESM sin ambigüedad y Vitest lo descubre solo.
+//
 // Los E2E NO viven aquí: Playwright tiene su propio runner y su propio
 // config (Fase 6.4). Por eso `e2e/` está excluido explícitamente — si no,
 // Vitest intentaría ejecutar los specs de Playwright y fallaría al importar
 // `@playwright/test`.
 
-import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
-// `__dirname` y no `import.meta.url`: este archivo lo carga Vite como
-// CommonJS (la raíz no declara `"type": "module"`), y la sintaxis ESM aquí
-// dispara un warning que en una versión futura de Vite será error.
-const projectRoot = path.resolve(__dirname);
+const projectRoot = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig({
   resolve: {
