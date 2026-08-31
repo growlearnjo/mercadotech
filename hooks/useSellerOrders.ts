@@ -17,8 +17,12 @@ export type MoveResult =
  * La RLS acepta cualquier destino de la lista permitida y NO comprueba el
  * orden: aceptaría `entregado → pagado`. Esa regla de negocio la impone el
  * hook, que es donde la spec la coloca.
+ *
+ * Exportada para poder testearla sin React (Fase 6.3, decisión 4 de la spec):
+ * la regla es lógica pura y no necesita renderizar el hook para probarse. El
+ * único consumidor sigue siendo `move`, aquí abajo.
  */
-function validateTransition(
+export function validateTransition(
   from: OrderStatus,
   to: OrderStatus,
 ): MoveResult {
