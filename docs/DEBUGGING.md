@@ -354,3 +354,5 @@ Al terminar cualquier feature, el orden es siempre el mismo:
 
 Tras cambiar una Skill hay que **reiniciar la sesión de Claude Code** para que
 se recargue.
+
+<!-- Cambio trivial para probar que el CI corre en los pull requests (Fase 6.7). -->
