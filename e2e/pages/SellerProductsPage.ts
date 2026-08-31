@@ -49,13 +49,20 @@ export class SellerProductsPage {
   }
 
   /**
-   * Rellena el formulario de publicación con la imagen de fixture y envía.
+   * Rellena el formulario de publicación con la imagen de fixture, envía y
+   * devuelve el id del producto creado.
+   *
+   * Al publicar, la app NO vuelve al listado: redirige a la pantalla de
+   * EDICIÓN del producto recién creado (`/vendedor/productos/<id>/editar`),
+   * porque las imágenes solo se pueden subir cuando ya existe el product_id
+   * (la política del bucket exige la carpeta del vendedor). El id sale de esa
+   * URL.
    *
    * El `<input type="file">` está oculto con `sr-only` para que el diseño use
    * su propio botón; `setInputFiles` no necesita que sea visible, así que se
    * ataca directo en vez de simular el clic del botón.
    */
-  async publish(product: NewProduct): Promise<void> {
+  async publish(product: NewProduct): Promise<string> {
     await this.gotoPublish();
     await this.page.getByTestId("product-form-title").fill(product.title);
     if (product.brand) {
@@ -73,6 +80,8 @@ export class SellerProductsPage {
     await this.page.getByTestId("product-form-stock").fill(product.stock);
     await this.page.getByTestId("product-form-images").setInputFiles(FIXTURE_IMAGE);
     await this.page.getByTestId("product-form-submit").click();
+    await this.page.waitForURL(/\/vendedor\/productos\/[0-9a-f-]{36}\/editar$/);
+    return this.page.url().split("/vendedor/productos/")[1].replace("/editar", "");
   }
 
   formError(): Locator {

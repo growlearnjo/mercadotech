@@ -25,8 +25,11 @@ export default defineConfig({
   // En CI un fallo intermitente cuesta una corrida entera; en local se quiere
   // ver el fallo a la primera, sin reintentos que lo escondan.
   retries: isCI ? 2 : 0,
-  // Serie en CI: los specs comparten UNA base de datos y se pisarían.
-  workers: isCI ? 1 : undefined,
+  // En SERIE siempre, no solo en CI: los specs comparten UNA base de datos
+  // local (el comprador compra, el vendedor publica y mueve pedidos) y en
+  // paralelo se pisan entre sí. Además, en local el `next dev` compila cada
+  // ruta bajo demanda y varios workers a la vez lo saturan hasta el timeout.
+  workers: 1,
   // 30 s (el default) no alcanzan: en local el `next dev` de Turbopack compila
   // cada ruta la primera vez que se pide, y con los 3 navegadores golpeando a
   // la vez el primer render de la home se va por encima de ese margen. No es
