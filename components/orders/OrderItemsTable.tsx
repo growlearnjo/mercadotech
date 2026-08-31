@@ -17,7 +17,7 @@ import type { OrderItem } from "@/types/order";
  */
 export function OrderItemsTable({ items }: { items: OrderItem[] }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto" data-testid="order-items">
       <Table>
         <TableHeader>
           <TableRow>
@@ -29,7 +29,7 @@ export function OrderItemsTable({ items }: { items: OrderItem[] }) {
         </TableHeader>
         <TableBody>
           {items.map((item) => (
-            <TableRow key={item.id}>
+            <TableRow key={item.id} data-testid="order-item-row">
               <TableCell>
                 <Link
                   href={`/producto/${item.product_id}`}

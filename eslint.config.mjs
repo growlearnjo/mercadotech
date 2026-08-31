@@ -29,6 +29,16 @@ const eslintConfig = [
     },
   },
   {
+    // Los E2E de Playwright no son React. La fixture recibe una funcion
+    // llamada `use()` y la regla react-hooks la confunde con un hook llamado
+    // fuera de un componente: es un falso positivo estructural, no un
+    // descuido, asi que la regla se apaga SOLO aqui.
+    files: ["e2e/**/*.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+    },
+  },
+  {
     ignores: [
       "node_modules/**",
       ".next/**",

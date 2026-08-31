@@ -38,6 +38,7 @@ function Column({
   return (
     <section
       ref={setNodeRef}
+      data-testid={`kanban-column-${status}`}
       aria-label={`${ORDER_STATUS_LABELS[status]} (${orders.length})`}
       className={cn(
         "flex min-w-60 flex-1 flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3 transition-colors",

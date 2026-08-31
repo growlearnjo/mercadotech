@@ -18,6 +18,7 @@ export function OrderCard({ order }: { order: Order }) {
   return (
     <Link
       href={`/pedidos/${order.id}`}
+      data-testid="order-card"
       className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card p-4 transition-shadow hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
     >
       <div className="flex flex-col gap-1">

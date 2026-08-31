@@ -26,7 +26,12 @@ export default function SellerProductsPage() {
             {loading ? "Cargando…" : `${products.length} en total`}
           </p>
         </div>
-        <Button render={<Link href="/vendedor/publicar" />} nativeButton={false} size="sm">
+        <Button
+          render={<Link href="/vendedor/publicar" />}
+          nativeButton={false}
+          size="sm"
+          data-testid="seller-publish-link"
+        >
           <PackagePlus className="size-4" aria-hidden="true" />
           Publicar producto
         </Button>

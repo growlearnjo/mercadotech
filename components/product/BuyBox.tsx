@@ -48,11 +48,17 @@ export function BuyBox({
   const blocked = blockedReason({ isActive, isOwner, stock });
 
   return (
-    <aside className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5">
-      <Price value={price} size="xl" />
+    <aside
+      data-testid="buy-box"
+      className="flex flex-col gap-4 rounded-lg border border-border bg-card p-5"
+    >
+      <Price value={price} size="xl" data-testid="buy-box-price" />
 
       {blocked ? (
-        <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+        <p
+          data-testid="buy-box-blocked"
+          className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground"
+        >
           {blocked}
         </p>
       ) : (
@@ -60,6 +66,7 @@ export function BuyBox({
           <Label htmlFor="quantity">Cantidad</Label>
           <select
             id="quantity"
+            data-testid="buy-box-quantity"
             value={quantity}
             onChange={(event) => setQuantity(Number(event.target.value))}
             className="h-9 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
@@ -79,6 +86,7 @@ export function BuyBox({
       <Button
         onClick={() => onAddToCart(quantity)}
         disabled={Boolean(blocked) || addingToCart}
+        data-testid="buy-box-add-to-cart"
         className="w-full"
       >
         <ShoppingCart className="size-4" aria-hidden="true" />
@@ -90,6 +98,7 @@ export function BuyBox({
         onClick={onToggleFavorite}
         disabled={favoriteLoading}
         aria-pressed={isFavorite}
+        data-testid="buy-box-favorite"
         className="w-full"
       >
         <Heart

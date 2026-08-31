@@ -31,7 +31,10 @@ export function CartItemRow({
   // ni comprar, solo quitarlo del carrito.
   if (!product) {
     return (
-      <li className="flex items-center gap-4 border-b border-border py-4">
+      <li
+        data-testid="cart-item-unavailable"
+        className="flex items-center gap-4 border-b border-border py-4"
+      >
         <div className="flex size-20 shrink-0 items-center justify-center rounded-md bg-muted text-xs text-muted-foreground">
           N/D
         </div>
@@ -41,7 +44,12 @@ export function CartItemRow({
             El vendedor lo despublicó. Quítalo para poder finalizar la compra.
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={onRemove}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onRemove}
+          data-testid="cart-item-remove"
+        >
           <Trash2 className="size-4" aria-hidden="true" />
           Quitar
         </Button>
@@ -50,7 +58,10 @@ export function CartItemRow({
   }
 
   return (
-    <li className="flex flex-wrap items-center gap-4 border-b border-border py-4">
+    <li
+      data-testid="cart-item"
+      className="flex flex-wrap items-center gap-4 border-b border-border py-4"
+    >
       <ProductImage
         src={product.image_url}
         alt={product.title}
@@ -74,6 +85,7 @@ export function CartItemRow({
         </label>
         <select
           id={`qty-${product.id}`}
+          data-testid="cart-item-quantity"
           value={quantity}
           onChange={(event) => onQuantityChange(Number(event.target.value))}
           className="h-9 rounded-lg border border-input bg-transparent px-2 text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
@@ -86,12 +98,17 @@ export function CartItemRow({
           ))}
         </select>
 
-        <Price value={product.price * quantity} size="md" />
+        <Price
+          value={product.price * quantity}
+          size="md"
+          data-testid="cart-item-subtotal"
+        />
 
         <Button
           variant="ghost"
           size="icon"
           onClick={onRemove}
+          data-testid="cart-item-remove"
           aria-label={`Quitar ${product.title} del carrito`}
         >
           <Trash2 className="size-4" aria-hidden="true" />

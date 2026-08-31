@@ -18,6 +18,7 @@ export function CartIndicator({ count, className }: CartIndicatorProps) {
   return (
     <Link
       href="/carrito"
+      data-testid="cart-indicator"
       className={cn(
         "relative inline-flex items-center gap-2 rounded-md px-2 py-1 text-sm font-medium transition-colors hover:text-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
         className,
@@ -34,6 +35,7 @@ export function CartIndicator({ count, className }: CartIndicatorProps) {
         {hasItems ? (
           <span
             aria-hidden="true"
+            data-testid="cart-count"
             className="absolute -top-2 -right-2 flex size-4.5 items-center justify-center rounded-full bg-primary px-1 text-[0.65rem] leading-none font-semibold text-primary-foreground"
           >
             {count > MAX_VISIBLE_COUNT ? `${MAX_VISIBLE_COUNT}+` : count}

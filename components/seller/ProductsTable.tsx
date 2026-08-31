@@ -29,7 +29,10 @@ export function ProductsTable({
   onDelete,
 }: ProductsTableProps) {
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div
+      data-testid="seller-products-table"
+      className="overflow-x-auto rounded-lg border border-border"
+    >
       <Table>
         <TableHeader>
           <TableRow>
@@ -43,7 +46,7 @@ export function ProductsTable({
         </TableHeader>
         <TableBody>
           {products.map((product) => (
-            <TableRow key={product.id}>
+            <TableRow key={product.id} data-testid="seller-product-row">
               <TableCell>
                 <ProductImage
                   src={product.image_url}

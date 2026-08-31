@@ -27,6 +27,7 @@ export function ProductCard({ product, className, similarity }: ProductCardProps
   return (
     <Link
       href={`/producto/${product.id}`}
+      data-testid="product-card"
       className={cn(
         "group flex flex-col overflow-hidden rounded-lg border border-border bg-card transition-shadow hover:shadow-md focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
         className,
@@ -49,7 +50,10 @@ export function ProductCard({ product, className, similarity }: ProductCardProps
           {outOfStock ? (
             // El producto sigue activo, así que aparece en el grid; se avisa
             // aquí para no llevar a nadie a un detalle sin poder comprar.
-            <span className="rounded-4xl bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            <span
+              data-testid="product-card-out-of-stock"
+              className="rounded-4xl bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+            >
               Sin stock
             </span>
           ) : null}

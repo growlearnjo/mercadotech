@@ -87,7 +87,13 @@ function FiltersBody({ value, onChange, onClear }: FiltersPanelProps) {
       <div className="flex items-center justify-between">
         <SectionTitle>Filtros</SectionTitle>
         {hasFilters ? (
-          <Button variant="link" size="xs" onClick={onClear} className="h-auto p-0">
+          <Button
+            variant="link"
+            size="xs"
+            onClick={onClear}
+            data-testid="filters-clear"
+            className="h-auto p-0"
+          >
             Limpiar
           </Button>
         ) : null}
@@ -106,6 +112,7 @@ function FiltersBody({ value, onChange, onClear }: FiltersPanelProps) {
               <input
                 type="radio"
                 name="sort"
+                data-testid={`filter-sort-${option.value}`}
                 checked={value.sort === option.value}
                 onChange={() => onChange({ sort: option.value })}
                 className="size-4 accent-[var(--primary)]"
@@ -137,6 +144,7 @@ function FiltersBody({ value, onChange, onClear }: FiltersPanelProps) {
             </Label>
             <Input
               id="minPrice"
+              data-testid="filter-min-price"
               inputMode="numeric"
               placeholder={`S/ ${PRICE_RANGE.min}`}
               value={minDraft}
@@ -153,6 +161,7 @@ function FiltersBody({ value, onChange, onClear }: FiltersPanelProps) {
             </Label>
             <Input
               id="maxPrice"
+              data-testid="filter-max-price"
               inputMode="numeric"
               placeholder={`S/ ${PRICE_RANGE.max.toLocaleString("es-PE")}`}
               value={maxDraft}
@@ -179,6 +188,7 @@ function FiltersBody({ value, onChange, onClear }: FiltersPanelProps) {
             >
               <input
                 type="checkbox"
+                data-testid={`filter-condition-${condition}`}
                 checked={value.condition.includes(condition)}
                 onChange={() => toggleCondition(condition)}
                 className="size-4 accent-[var(--primary)]"

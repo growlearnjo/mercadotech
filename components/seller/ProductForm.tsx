@@ -102,6 +102,7 @@ export function ProductForm({
       <Field id="title" label="Título" error={errors.title}>
         <Input
           id="title"
+          data-testid="product-form-title"
           value={values.title}
           maxLength={TITLE_MAX}
           onChange={(e) => onChange("title", e.target.value)}
@@ -123,6 +124,7 @@ export function ProductForm({
         <Field id="brand" label="Marca">
           <Input
             id="brand"
+            data-testid="product-form-brand"
             value={values.brand}
             onChange={(e) => onChange("brand", e.target.value)}
           />
@@ -131,6 +133,7 @@ export function ProductForm({
         <Field id="categoryId" label="Categoría" error={errors.categoryId}>
           <select
             id="categoryId"
+            data-testid="product-form-category"
             value={values.categoryId}
             onChange={(e) => onChange("categoryId", e.target.value)}
             aria-invalid={Boolean(errors.categoryId)}
@@ -150,6 +153,7 @@ export function ProductForm({
         <Field id="condition" label="Condición" error={errors.condition}>
           <select
             id="condition"
+            data-testid="product-form-condition"
             value={values.condition}
             onChange={(e) =>
               onChange("condition", e.target.value as ProductCondition)
@@ -167,6 +171,7 @@ export function ProductForm({
         <Field id="price" label="Precio (S/)" error={errors.price}>
           <Input
             id="price"
+            data-testid="product-form-price"
             inputMode="decimal"
             value={values.price}
             onChange={(e) => onChange("price", e.target.value)}
@@ -178,6 +183,7 @@ export function ProductForm({
         <Field id="stock" label="Stock" error={errors.stock}>
           <Input
             id="stock"
+            data-testid="product-form-stock"
             inputMode="numeric"
             value={values.stock}
             onChange={(e) => onChange("stock", e.target.value)}
@@ -197,13 +203,13 @@ export function ProductForm({
       />
 
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" data-testid="product-form-error" className="text-sm text-destructive">
           {error}
         </p>
       ) : null}
 
       <div>
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" data-testid="product-form-submit" disabled={submitting}>
           {submitting ? "Guardando…" : submitLabel}
         </Button>
       </div>

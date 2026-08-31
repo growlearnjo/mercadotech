@@ -21,13 +21,16 @@ export function CartSummary({
   onCheckout,
 }: CartSummaryProps) {
   return (
-    <aside className="flex h-fit flex-col gap-4 rounded-lg border border-border bg-card p-5">
+    <aside
+      data-testid="cart-summary"
+      className="flex h-fit flex-col gap-4 rounded-lg border border-border bg-card p-5"
+    >
       <h2 className="text-sm font-semibold tracking-[0.14em] uppercase">
         Resumen
       </h2>
 
       <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">
+        <span data-testid="cart-item-count" className="text-muted-foreground">
           {itemCount} {itemCount === 1 ? "producto" : "productos"}
         </span>
         <Price value={subtotal} size="sm" />
@@ -37,11 +40,14 @@ export function CartSummary({
 
       <div className="flex items-center justify-between">
         <span className="font-medium">Total</span>
-        <Price value={subtotal} size="lg" />
+        <Price value={subtotal} size="lg" data-testid="cart-total" />
       </div>
 
       {disabledReason ? (
-        <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+        <p
+          data-testid="cart-disabled-reason"
+          className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground"
+        >
           {disabledReason}
         </p>
       ) : null}
@@ -49,6 +55,7 @@ export function CartSummary({
       <Button
         onClick={onCheckout}
         disabled={Boolean(disabledReason) || submitting}
+        data-testid="cart-checkout"
         className="w-full"
       >
         {submitting ? "Procesando…" : "Finalizar compra"}

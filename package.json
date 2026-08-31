@@ -12,7 +12,9 @@
     "db:images": "node scripts/seed-images.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

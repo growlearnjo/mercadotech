@@ -43,7 +43,12 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
     return (
       // `nativeButton={false}`: el elemento renderizado es un <a>, no un
       // <button>; sin esto Base UI avisa de que se pierden las semánticas.
-      <Button render={<Link href="/login" />} nativeButton={false} size="sm">
+      <Button
+        render={<Link href="/login" />}
+        nativeButton={false}
+        size="sm"
+        data-testid="nav-login"
+      >
         Ingresar
       </Button>
     );
@@ -55,6 +60,7 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
+        data-testid="user-menu"
         className="rounded-full focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
         aria-label={`Menú de ${name}`}
       >
@@ -74,7 +80,11 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
 
-        <DropdownMenuItem render={<Link href="/pedidos" />} nativeButton={false}>
+        <DropdownMenuItem
+          render={<Link href="/pedidos" />}
+          nativeButton={false}
+          data-testid="user-menu-orders"
+        >
           <Package aria-hidden="true" />
           Mis pedidos
         </DropdownMenuItem>
@@ -96,6 +106,7 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
           <DropdownMenuItem
             render={<Link href="/vendedor/productos" />}
             nativeButton={false}
+            data-testid="user-menu-seller"
           >
             <Store aria-hidden="true" />
             Panel del vendedor
@@ -103,7 +114,11 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
         ) : null}
 
         <DropdownMenuSeparator />
-        <DropdownMenuItem variant="destructive" onClick={onLogout}>
+        <DropdownMenuItem
+          variant="destructive"
+          onClick={onLogout}
+          data-testid="user-menu-logout"
+        >
           <LogOut aria-hidden="true" />
           Cerrar sesión
         </DropdownMenuItem>

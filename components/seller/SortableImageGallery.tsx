@@ -231,6 +231,7 @@ export function SortableImageGallery({
 
       <input
         ref={inputRef}
+        data-testid="product-form-images"
         type="file"
         accept={ALLOWED_IMAGE_TYPES.join(",")}
         multiple

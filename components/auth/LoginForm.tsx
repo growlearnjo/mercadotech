@@ -42,6 +42,7 @@ export function LoginForm({ onSubmit, loading, error }: LoginFormProps) {
         <Label htmlFor="email">Correo</Label>
         <Input
           id="email"
+          data-testid="login-email"
           name="email"
           type="email"
           autoComplete="email"
@@ -61,6 +62,7 @@ export function LoginForm({ onSubmit, loading, error }: LoginFormProps) {
         <Label htmlFor="password">Contraseña</Label>
         <Input
           id="password"
+          data-testid="login-password"
           name="password"
           type="password"
           autoComplete="current-password"
@@ -78,12 +80,12 @@ export function LoginForm({ onSubmit, loading, error }: LoginFormProps) {
 
       {error ? (
         // `alert` para que el lector de pantalla lo anuncie al aparecer.
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" data-testid="login-error" className="text-sm text-destructive">
           {error}
         </p>
       ) : null}
 
-      <Button type="submit" disabled={loading} className="w-full">
+      <Button type="submit" data-testid="login-submit" disabled={loading} className="w-full">
         {loading ? "Ingresando…" : "Ingresar"}
       </Button>
     </form>

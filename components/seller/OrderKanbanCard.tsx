@@ -29,6 +29,7 @@ export function OrderKanbanCard({
   return (
     <li
       ref={setNodeRef}
+      data-testid={`kanban-card-${order.id}`}
       style={{ transform: CSS.Translate.toString(transform) }}
       className={cn(
         "flex flex-col gap-2 rounded-lg border border-border bg-card p-3",
@@ -47,6 +48,7 @@ export function OrderKanbanCard({
             type="button"
             {...attributes}
             {...listeners}
+            data-testid={`kanban-handle-${order.id}`}
             aria-label={`Mover pedido ${order.id.slice(0, 8)}`}
             className="cursor-grab rounded-md p-1 text-muted-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >

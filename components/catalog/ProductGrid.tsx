@@ -61,7 +61,7 @@ export function ProductGrid({
   }
 
   return (
-    <div className={GRID}>
+    <div className={GRID} data-testid="product-grid">
       {products.map((product) => (
         <ProductCard
           key={product.id}

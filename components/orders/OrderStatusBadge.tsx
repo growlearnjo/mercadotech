@@ -17,6 +17,7 @@ export function OrderStatusBadge({
     // `transition-none` por el mismo motivo que ConditionBadge: animar un color
     // que sale de una variable CSS deja el badge anclado al tema anterior.
     <Badge
+      data-testid="order-status"
       className={cn("transition-none", ORDER_STATUS_CLASSES[status], className)}
     >
       {ORDER_STATUS_LABELS[status]}

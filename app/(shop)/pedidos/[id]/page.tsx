@@ -66,7 +66,10 @@ function OrderDetail({ id }: { id: string }) {
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">
+            <h1
+              data-testid="order-title"
+              className="text-2xl font-semibold tracking-tight"
+            >
               Pedido #{order.id.slice(0, 8)}
             </h1>
             <OrderStatusBadge status={order.status} />
@@ -118,7 +121,7 @@ function OrderDetail({ id }: { id: string }) {
 
       <div className="flex items-center justify-between">
         <span className="font-medium">Total</span>
-        <Price value={order.total} size="lg" />
+        <Price value={order.total} size="lg" data-testid="order-total" />
       </div>
 
       <p className="text-xs text-muted-foreground">
