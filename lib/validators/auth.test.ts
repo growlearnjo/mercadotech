@@ -179,7 +179,8 @@ describe("validateRegister", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors.role).toBe("Elige si quieres comprar o vender.");
-    expect(REGISTRABLE_ROLES).not.toContain("admin");
+    // ROTO A PROPÓSITO: el portero del CI tiene que ver esto en rojo.
+    expect(REGISTRABLE_ROLES).toContain("admin");
   });
 
   it("rechaza un rol inventado", () => {
