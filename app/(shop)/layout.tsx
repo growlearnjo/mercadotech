@@ -36,7 +36,7 @@ export default function ShopLayout({
           width="wide"
           className="flex flex-col items-center justify-between gap-2 text-sm text-muted-foreground sm:flex-row"
         >
-          <p>MercadoTech — proyecto de curso, sin cobros reales.</p>
+          <p>MercadoTech — proyecto de curso, sin cobros reales. Desplegado con Vercel.</p>
           <p>El checkout es simulado: crea el pedido y descuenta stock.</p>
         </Container>
       </footer>
