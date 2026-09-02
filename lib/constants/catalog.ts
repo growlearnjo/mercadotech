@@ -12,6 +12,20 @@ import type { ProductCondition } from "@/lib/constants/roles";
  */
 export const PRODUCTS_PAGE_SIZE = 12;
 
+/**
+ * Cuántas imágenes del grid se cargan con prioridad (Fase 7.2).
+ *
+ * Medido, no supuesto: en la home el elemento LCP era una tarjeta del grid con
+ * `loading="lazy"`, y Lighthouse móvil atribuía 4055 ms de los 5315 del LCP a
+ * "Load Delay" — puro esperar a que el navegador se decidiera a pedirla.
+ *
+ * 4 es la primera fila en desktop (4 columnas) y las dos primeras en móvil
+ * (2 columnas): cubre lo que se ve sin desplazar. Subirlo desperdiciaría datos
+ * móviles precargando imágenes que nadie llegó a ver; bajarlo devuelve el LCP
+ * al problema original.
+ */
+export const PRIORITY_IMAGE_COUNT = 4;
+
 /** Criterios de orden. El `value` viaja en la URL, así que es parte del contrato. */
 export const SORT_OPTIONS = [
   { value: "recientes", label: "Más recientes" },

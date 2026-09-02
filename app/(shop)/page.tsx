@@ -2,7 +2,10 @@
 
 import * as React from "react";
 
-import { CatalogView } from "@/components/catalog/CatalogView";
+import {
+  CatalogView,
+  CatalogViewSkeleton,
+} from "@/components/catalog/CatalogView";
 import { useProducts } from "@/hooks/useProducts";
 
 /** Home: el catálogo completo, sin filtro fijo. */
@@ -15,7 +18,7 @@ function HomeContent() {
 export default function HomePage() {
   // `useProducts` lee searchParams, así que necesita un límite de Suspense.
   return (
-    <React.Suspense fallback={null}>
+    <React.Suspense fallback={<CatalogViewSkeleton title="Productos" />}>
       <HomeContent />
     </React.Suspense>
   );

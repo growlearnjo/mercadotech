@@ -3,7 +3,10 @@ import { SearchX } from "lucide-react";
 import { ProductCard, ProductCardSkeleton } from "@/components/catalog/ProductCard";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
-import { PRODUCTS_PAGE_SIZE } from "@/lib/constants/catalog";
+import {
+  PRIORITY_IMAGE_COUNT,
+  PRODUCTS_PAGE_SIZE,
+} from "@/lib/constants/catalog";
 import type { Product } from "@/types/product";
 
 type ProductGridProps = {
@@ -62,11 +65,14 @@ export function ProductGrid({
 
   return (
     <div className={GRID} data-testid="product-grid">
-      {products.map((product) => (
+      {products.map((product, index) => (
         <ProductCard
           key={product.id}
           product={product}
           similarity={similarityByProductId?.[product.id]}
+          // Las primeras del grid son lo que se ve sin desplazar: sin esto,
+          // el LCP se lo comía el "Load Delay" de una imagen lazy (Fase 7.2).
+          priority={index < PRIORITY_IMAGE_COUNT}
         />
       ))}
     </div>
