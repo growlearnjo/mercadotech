@@ -1,7 +1,11 @@
 # Despliegue de MercadoTech
 
 Manual de operación: dónde vive cada clave, cómo se publica un cambio y cómo se
-vuelve atrás. Escrito en la sesión 7.
+vuelve atrás. Escrito en la sesión 7 y **ejecutado en la sesión 8**, que lo
+corrigió con lo que el primer despliegue real dejó al descubierto.
+
+**Producción:** https://mercadotech.vercel.app
+**Base de datos:** proyecto Supabase `hlndgjlmsuqrprnvvpdo` (región São Paulo).
 
 > **Regla de oro de este documento: aquí no hay ni un solo valor de clave.**
 > Solo nombres de variables, dónde viven y quién las lee. Los valores se pegan
@@ -31,6 +35,34 @@ Esa última fila es una decisión de diseño, no un olvido: el workflow de la
 sesión 6 levanta su propio Supabase efímero y **no afirma respuestas de IA**,
 así que no necesita ninguna credencial. Un CI sin secretos es un CI que no
 puede filtrarlos — y en un repositorio público eso importa el doble.
+
+### 1.1.b Dos formatos de clave: cuál te toca (aprendido en el go-live)
+
+Supabase cambió su sistema de claves, y **los proyectos nuevos usan el formato
+nuevo**. Esto costó tres intentos fallidos de despliegue, así que conviene
+saberlo antes:
+
+| Rol | Formato nuevo | Formato legacy |
+|---|---|---|
+| Pública | `sb_publishable_…` | JWT `eyJ…` llamado `anon` |
+| Secreta | `sb_secret_…` | JWT `eyJ…` llamado `service_role` |
+
+En un proyecto creado hoy, **las legacy pueden venir desactivadas**. Si pegas
+una de ellas obtienes un `401` con `Sb-Error-Code: UNAUTHORIZED_INVALID_API_KEY`
+— y el mensaje no dice en ningún momento que el problema sea el formato.
+
+Las claves buenas están en **Project Settings → API Keys**. Ojo: el stack
+local sí emite ambos formatos (`supabase status` los muestra), así que en
+desarrollo nunca notas la diferencia.
+
+**Verifica una clave antes de desplegar con ella.** Este comando tarda dos
+segundos y ahorra un ciclo entero de build:
+
+```bash
+curl "https://<ref>.supabase.co/rest/v1/categories?select=name" -H "apikey: <clave>"
+```
+
+Devuelve las categorías si sirve, y `Invalid API key` si no.
 
 ### 1.2 Qué distingue una pública de una secreta
 
@@ -247,6 +279,21 @@ se deja activada y se configura el proveedor de correo.
 
    Los valores se copian del dashboard de Supabase y de Hugging Face y se pegan
    aquí directamente. **No pasan por el chat ni por el repositorio.**
+
+   ⚠️ **Dos trampas que costaron la tarde en el go-live real:**
+
+   * **NO marques como *Sensitive* las variables `NEXT_PUBLIC_*`.** Vercel
+     entrega las sensibles solo en tiempo de ejecución, y las `NEXT_PUBLIC_*`
+     se necesitan **durante el build**: quedan vacías y la página muere con
+     `Application error: a client-side exception has occurred`. Vercel no deja
+     quitar esa marca — hay que borrar la variable y crearla de nuevo. Las dos
+     secretas (`SUPABASE_SERVICE_ROLE_KEY`, `HUGGINGFACEHUB_API_TOKEN`) sí van
+     marcadas.
+   * **Pega los valores de PRODUCCIÓN, no los de tu máquina.** Copiar lo que
+     imprime `supabase status` deja la web desplegada pidiéndole datos a
+     `http://127.0.0.1:54321`, que en el navegador de un visitante es *su*
+     computadora. Síntoma: `CORS error` en todas las peticiones, 0 bytes, en
+     milisegundos.
 4. Settings → General → **Node.js Version: 24**, para que coincida con el CI
    (`NODE_VERSION: "24"` en el workflow) y con la máquina de desarrollo.
 5. **Deploy**.
@@ -310,7 +357,38 @@ Sobre la URL de **producción**, en este orden:
 Y en el dashboard de Supabase al terminar: 15 tablas, 10 artículos, 10
 embeddings, y el producto demo con su imagen en el bucket.
 
-> Anotar aquí los resultados de la corrida real, con fecha.
+**Corrida real — 2026-09-02, `https://mercadotech.vercel.app`:**
+
+| # | Resultado |
+|---|---|
+| 1 | ✅ La home carga con navbar, categorías y filtros |
+| 2 | ✅ Registro como vendedor, sin pedir confirmación por correo |
+| 3 | ✅ Producto publicado desde el formulario, con su imagen en Storage |
+| 4 | ✅ Aparece en el catálogo público |
+| 5 | ✅ El detalle abre con su galería |
+| 6 | ✅ `/soporte` responde citando la FAQ, con sus fuentes listadas |
+| 7 | ✅ Logout y login |
+| 8 | ✅ Favicon y título correctos |
+
+Y el flujo de despliegue, demostrado con el PR #2 (`deploy-smoke`): los dos
+checks del CI marcados **Required**, preview propio con su URL, y tras el merge
+la producción mostrando el cambio del pie de página.
+
+### 2.9.b Catálogo de demostración (opcional)
+
+Producción nace sin productos (§2.3) y eso es correcto, pero una demo con el
+catálogo vacío no luce. Para poblarlo sin publicar 20 productos a mano:
+
+```bash
+# 1. Edita el correo en supabase/demo-catalog.sql y pégalo en el SQL Editor.
+# 2. Sube a Storage las fotos que ese SQL solo deja referenciadas:
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... node scripts/upload-catalog-images.mjs
+```
+
+Son 20 productos repartidos entre las 8 categorías, a nombre de una cuenta de
+vendedor existente. **No es una migración y no debe moverse a `migrations/`:**
+son datos que dependen de un usuario que solo existe en producción, y como
+migración rompería `supabase db reset` y dejaría el CI en rojo permanente.
 
 ### 2.10 Opcional: E2E contra un preview
 
@@ -369,6 +447,10 @@ usa, y siempre hacia adelante — nunca a mitad de un incidente.
 | Síntoma | Causa más probable | Qué hacer |
 |---|---|---|
 | El build falla en Vercel pero pasa en local | Falta una `NEXT_PUBLIC_*` (se necesitan **en build**) o la versión de Node no coincide | Revisar las variables en Project Settings → Environment Variables; alinear Node en Settings → General a la 24 |
+| **`db push` falla con `type "vector" does not exist` (42704)** | Un tipo de pgvector sin calificar. `extensions` está en el search_path del stack local pero **no** en el de Supabase hosted, así que el SQL pasa en local y revienta en producción | Calificar el tipo: `extensions.vector`. Ocurrió de verdad en la migración `20260828200750`, con 26 migraciones "verdes" y una rota que solo se destapó al desplegar |
+| **La página muere con `Application error: a client-side exception`** y la consola dice `Your project's URL and API key are required` | Las `NEXT_PUBLIC_*` llegaron vacías al build, casi siempre por estar marcadas como *Sensitive* (§2.6) | Recrearlas sin esa marca y **Redeploy sin build cache**. Se confirma buscando la URL del proyecto dentro de los chunks servidos: si no está, el build salió sin ella |
+| **`CORS error` en todas las peticiones, 0 bytes, en milisegundos** | La app desplegada está pidiendo datos a `127.0.0.1`: se pegaron en Vercel los valores del entorno local | Mirar **Request URL** en Network (no el mensaje de la pantalla, que dice "revisa tu conexión" ante cualquier fallo) y corregir los valores por los del proyecto hosted |
+| **`401` con `Sb-Error-Code: UNAUTHORIZED_INVALID_API_KEY`** | Clave del formato legacy (`eyJ…`) en un proyecto que usa el nuevo (§1.1.b) | Tomar las de Project Settings → **API Keys** (`sb_publishable_…` / `sb_secret_…`) y verificarlas con el `curl` de §1.1.b antes de desplegar |
 | "Invalid API key" o autenticación rota en producción | Clave pegada con espacios, de otro proyecto, o variable cambiada **sin redeploy** | Re-pegar desde el dashboard de Supabase y **Redeploy** |
 | Un registro nuevo no inicia sesión | "Confirm email" activo, que es como viene el hosted | Desactivarlo (§2.5), o confirmar el usuario a mano en el dashboard |
 | `/soporte` responde que no encontró información | FAQ sembrada pero **sin indexar** | Correr `index-all.ts` con las variables de producción (§2.4) y verificar los 10 embeddings |
