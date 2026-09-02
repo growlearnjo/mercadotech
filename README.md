@@ -9,8 +9,7 @@ sobre la FAQ— responden **citando sus fuentes**.
 > pedido y descuenta stock, sin cobrar nada. Es una decisión de diseño del
 > proyecto, no una funcionalidad pendiente.
 
-**Producción:** _(pendiente: se completa con la URL de Vercel tras el go-live,
-[`docs/DEPLOY.md`](docs/DEPLOY.md) §2.6)_
+**Producción:** https://mercadotech.vercel.app
 
 ---
 
