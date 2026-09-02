@@ -27,7 +27,7 @@ npm run lint        # ESLint
 npm run type-check  # tsc --noEmit
 npm run test        # Vitest (unit): 293 tests, ~3 s, SIN red ni Docker
 npm run test:coverage    # lo mismo + reporte en coverage/
-npm run test:e2e    # Playwright (E2E) — exige `supabase db reset` antes
+npm run test:e2e    # Playwright (E2E): 13 specs — exige `supabase db reset` antes
 npm run test:e2e:ui # el mismo runner en modo interactivo
 npm run db:types    # regenera types/database.ts desde el esquema local
 npm run db:images   # descarga imágenes de muestra y las sube a Storage
@@ -203,6 +203,31 @@ dependencias opcionales y rompe `npm ci`. Si se regenera el lockfile, hay que
 cambiar los dos sitios a la vez. `mcp/` está EXCLUIDO del `tsconfig.json` de la
 raíz: tiene su propio type-check, que el CI ejecuta en su carpeta.
 
+## Despliegue y performance (sesión 7)
+
+* **Deploy: PR → preview de Vercel; merge a `main` (con los checks `checks` y
+  `e2e` obligatorios) → producción.** Vercel se conecta a GitHub por SU
+  interfaz: prohibido instalar la CLI de Vercel, crear tokens de deploy o
+  agregar jobs de despliegue al workflow.
+* **Los secretos viven SOLO en el dashboard de Vercel**, cargados a mano.
+  GitHub Actions no usa ninguno y así debe seguir. Tras cambiar una variable en
+  Vercel: **redeploy**, o el cambio no existe (las `NEXT_PUBLIC_*` se incrustan
+  en tiempo de build). Nunca se pegan valores de claves en el chat ni en el
+  repositorio.
+* **El esquema del remoto solo se toca con `supabase db push`** (migraciones del
+  repo) y el SQL Editor para `supabase/seed.prod.sql`. Jamás cambios a mano.
+  `seed.sql` es de laboratorio y **jamás** se ejecuta contra producción.
+* **Performance: medir → cambiar → medir**, siempre contra build de producción,
+  nunca sobre `next dev`. Ningún cambio entra sin su número de antes y después
+  en [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md); lo que no mueve la aguja se
+  revierte y queda anotado. Antes de medir, leer su §2: tres formas de obtener
+  números falsos, ya pagadas, y la varianza de 21 puntos que obliga a reportar
+  la mediana de 3 corridas.
+* **Deuda técnica medida:** el catálogo se pide desde el cliente y esos ~3.9 s
+  de "Load Delay" son el techo del LCP. Servirlo desde Server Components es la
+  mejora principal pendiente, y cambia la regla `hooks → services`: es una
+  decisión de diseño, no un ajuste.
+
 ## Skills de gobernanza (`.claude/skills/`, sesión 5)
 
 Cuatro manuales de puesto que Claude Code carga solo, según lo que se le pida.
@@ -253,12 +278,19 @@ por dentro de la página, no por el middleware (la búsqueda exacta es pública)
   compras/soporte con RAG sobre Hugging Face.
 * Sesión 5: completa (Fases 5.1–5.6). 4 Skills de gobernanza + servidor MCP de
   solo lectura (10 tools, 7 resources, 5 prompts).
-* Sesión 6: completa (Fases 6.1–6.8). 293 tests unitarios, 14 E2E y CI en
-  GitHub Actions. Absorbió el pipeline que el plan maestro tenía como Fase 7.1.
-  Hallazgo abierto: el kanban no es usable por teclado (falta un
-  `coordinateGetter` en `OrdersKanban.tsx`); sus dos E2E están en `test.fixme`.
-* Siguiente: sesión 7 (performance, secretos y despliegue en Vercel — el CI ya
-  está hecho).
+* Sesión 6: completa (Fases 6.1–6.8). 293 tests unitarios y CI en GitHub
+  Actions. Absorbió el pipeline que el plan maestro tenía como Fase 7.1.
+* Sesión 7: completa en lo automatizable (Fases 7.2–7.5). Kanban accesible por
+  teclado y sus 2 E2E fuera de `fixme` (**13/13**, no 14: el test que
+  documentaba el defecto se borró al corregirlo); `docs/PERFORMANCE.md`,
+  `docs/DEPLOY.md`, `supabase/seed.prod.sql`, README de producto y
+  `docs/ARQUITECTURA.md` al día.
+  **PENDIENTE de ejecución humana:** el go-live en sí (crear el proyecto
+  Supabase de producción, `db push`, conectar Vercel, branch protection y smoke
+  test). Todo está escrito paso a paso en `docs/DEPLOY.md` §2, y la rama
+  `deploy-smoke` espera sin publicar. **No hay URL de producción todavía.**
+* Siguiente: sesión 8 (agente de voz sobre `/soporte` + demo final). Empieza
+  ejecutando el go-live pendiente.
 
 Mapa de carpetas: [`docs/ESTRUCTURA.md`](docs/ESTRUCTURA.md).
 Detalle de decisiones y problemas: [`docs/BITACORA.md`](docs/BITACORA.md).
@@ -266,6 +298,10 @@ Checklist de calidad: [`docs/SESION3_CHECKLIST.md`](docs/SESION3_CHECKLIST.md).
 Flujo RAG, casos de prueba y calibración: [`docs/RAG.md`](docs/RAG.md).
 Ciclo de revisión de la sesión 5: [`docs/REVISION_S5.md`](docs/REVISION_S5.md).
 Metodología de depuración y errores típicos: [`docs/DEBUGGING.md`](docs/DEBUGGING.md).
+Variables, go-live, smoke test y rollback: [`docs/DEPLOY.md`](docs/DEPLOY.md).
+Mediciones de performance y su metodología: [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
+Puerta de entrada para alguien nuevo: [`README.md`](README.md) (el plan del
+curso se conserva en [`docs/PLAN_CURSO.md`](docs/PLAN_CURSO.md)).
 Servidor MCP (arquitectura, decisiones y síntomas): [`mcp/README.md`](mcp/README.md).
 
 ## Regla de sesiones

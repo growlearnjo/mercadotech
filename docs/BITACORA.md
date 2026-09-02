@@ -6,6 +6,253 @@ qué se dejó fuera a propósito.
 
 ---
 
+# Sesión 7 — Performance, secretos y despliegue (2026-09-02)
+
+La mudanza del taller al local comercial. La tienda ya funcionaba y tenía red
+de seguridad (sesión 6); esta sesión salda la deuda de accesibilidad que quedó
+abierta, mide la performance de verdad, escribe dónde vive cada llave y deja
+preparado el go-live a Vercel.
+
+**Volumen:** `git diff --stat c1da6e8..HEAD` → 19 archivos, +2 565 / −275.
+**Rango:** `fa0d9ac` … `cc569e9` (más la rama `deploy-smoke`, sin publicar).
+
+**Titular incómodo y honesto:** de los dos objetivos numéricos de performance
+se cumplió uno (CLS) y no el otro (Lighthouse ≥ 90). La causa no es una
+optimización que falte, sino de dónde vienen los datos — está medida, explicada
+y anotada como la deuda técnica principal del proyecto. Y **el go-live quedó
+preparado pero no ejecutado**: depende de dashboards que solo puede operar una
+persona.
+
+---
+
+## Paso 0 de la 7.2 — El hallazgo del kanban, cerrado (commit `27fcf97`)
+
+La sesión 6 cerró con el kanban de pedidos inutilizable por teclado y sus 2
+tests E2E en `test.fixme`. La spec de la 7 lo daba por un arreglo de **una
+línea**: pasarle al `KeyboardSensor` el mismo `coordinateGetter` que ya usaba la
+galería de imágenes.
+
+**No lo era, y descubrir por qué fue el trabajo real.** Aplicado el cambio, los
+tests seguían rojos y la tarjeta no se movía **ni un pixel** — antes al menos se
+movía 25 px. Leyendo el código de `@dnd-kit/sortable` aparece la razón:
+
+```js
+const activeDroppable = droppableContainers.get(active.id);
+if (newNode && newRect && activeDroppable && newDroppable) { … }
+```
+
+`sortableKeyboardCoordinates` exige que el elemento **arrastrado** esté también
+registrado como **droppable**, y eso solo lo hace `useSortable`. En la galería
+las imágenes son sortables; en el kanban las tarjetas son `useDraggable` y los
+droppables son las columnas. Ese `get` devolvía siempre `undefined`, así que el
+getter devolvía `undefined` y no había movimiento.
+
+La confirmación vino de instrumentar la región `aria-live` de dnd-kit, que narra
+el arrastre: tras `ArrowRight` seguía anunciando *"was moved over droppable area
+pagado"*, la columna de origen.
+
+**Solución:** un `coordinateGetter` propio en `OrdersKanban` que ordena las
+columnas habilitadas por su borde izquierdo, ubica la tarjeta y salta a la
+contigua — una pulsación, una columna. Permite `ArrowLeft` aunque el flujo de
+estados no admita retrocesos: rechazar es trabajo del hook, que avisa con un
+toast; si lo bloqueara el teclado, quien navega con teclado no recibiría
+explicación alguna.
+
+**Y el test también necesitaba trabajo.** Con el getter puesto, seguía rojo:
+dnd-kit resuelve la columna de destino **en el frame siguiente** a la flecha, y
+el `Space` de soltar que Playwright dispara en el mismo milisegundo caía sobre
+la columna de origen. Una persona nunca teclea tan rápido. `moveByKeyboard`
+espera ahora a que **cambie el anuncio aria-live** — estado observable, no un
+`waitForTimeout`.
+
+**Desviación de la spec, deliberada:** la spec pedía "14/14 E2E" y el resultado
+es **13/13**. El test que faltaba era el que *documentaba el defecto* —afirmaba
+que una flecha NO cambia de columna—, y el propio comentario de la sesión 6
+mandaba borrarlo el día del arreglo: hoy afirma lo contrario de lo correcto.
+Trece verdes y ningún `fixme`.
+
+---
+
+## Fase 7.2 — Performance: medir, cambiar, medir (commits `b2fc206`, `f943ca9`, `4416d9a`)
+
+### Lo que se ganó
+
+| Cambio | Medición |
+|---|---|
+| Esqueleto de catálogo en el Suspense de la home | **CLS 0.118 → 0** ✅ (objetivo < 0.1) |
+| `dynamic import` de la galería de imágenes | `/vendedor/publicar` y `/editar`: **308 kB → 287 kB** cada una |
+| `priority` en las 4 primeras imágenes del grid | Quita el `loading="lazy"` del elemento LCP; su Load Time baja de 138 a 72 ms |
+
+### Lo que se revirtió, con su número
+
+La regla de la fase —lo que no mueve la aguja se revierte y queda anotado—
+descartó tres cosas: el `dynamic import` de `ChatWindow` (solo −6 kB, a cambio
+de cargar en cascada el contenido principal de la ruta), el esqueleto en
+`/categoria/[slug]` (CLS idéntico; y al mover `React.use(params)` dentro del
+límite de Suspense **la ruta quedó colgada en el esqueleto para siempre**) y el
+de `/buscar` (sin medición que lo respaldara). El `dynamic import` de
+`OrdersKanban` ni se escribió: el kanban **es** el contenido de su ruta.
+
+### Tres formas de medir mal, todas cometidas antes de acertar
+
+Esto es lo más útil que deja la fase, y está detallado en
+[`PERFORMANCE.md`](PERFORMANCE.md) §2:
+
+1. **Servidor viejo con build nuevo.** `next start` sigue sirviendo el build que
+   leyó al arrancar. Daba **94** en la home — 22 puntos por encima de lo real.
+   Se detectó comparando la hora de arranque del proceso con la de
+   `.next/BUILD_ID`; ahora el script de medición aborta si el servidor es
+   anterior al build.
+2. **Caché fría del optimizador de imágenes.** La primera petición a
+   `/_next/image` obliga a Next a optimizar cada imagen: 68 en la primera
+   corrida y 73 en la tercera, sin tocar nada. Se añadió una corrida de
+   calentamiento que se descarta.
+3. **Medir una redirección.** `/asistente` exige sesión y Lighthouse acababa
+   midiendo `/login`. Produjo un falso "68 → 84 tras optimizar" que era la
+   varianza de `/login` consigo mismo. Se detecta leyendo `finalDisplayedUrl`.
+
+La varianza entre corridas idénticas llegó a **21 puntos**. Todos los números
+del informe son la **mediana de 3 corridas** tras un calentamiento.
+
+### Por qué no se alcanza Lighthouse ≥ 90
+
+Un `curl` lo resume: `curl -s localhost:3001/ | grep -c product-card` → **0**.
+El HTML inicial no trae ni una tarjeta. Las páginas son Client Components que
+piden los datos tras hidratar, así que la secuencia real es descargar ~300 kB de
+JavaScript → hidratar → `fetch` a Supabase → recién entonces existe la imagen.
+Eso son **3.9 s de "Load Delay"** en el LCP, el 73 % del total, y ninguna
+optimización de imagen puede tocarlo.
+
+Arreglarlo significa servir el catálogo desde **Server Components**, lo que
+cambia la regla `hooks → services` que rige el proyecto desde la sesión 3. No se
+hizo **a propósito**: la sesión prohíbe features y cambios de alcance, y alterar
+el contrato de capas a mitad de un go-live es justo el riesgo que esta sesión
+existe para evitar. Queda como la deuda técnica principal, medida y documentada.
+
+---
+
+## Fase 7.3 — Gobernanza de secretos (commit `de23817`)
+
+`docs/DEPLOY.md` §1: la tabla de las 6 variables (dónde vive cada una, quién la
+lee, pública o secreta), las reglas de operación, y **la fila que no existe a
+propósito**: GitHub Actions no recibe ninguna variable ni ningún secreto. No es
+un olvido — el CI de la sesión 6 levanta su propio Supabase efímero y no afirma
+respuestas de IA, así que no necesita credenciales. Un CI sin secretos no puede
+filtrarlos, y en un repositorio público eso importa el doble.
+
+Los cuatro greps anti-fuga (`hf_`, `sb_secret`, `eyJ`, y `.env.local` en todo el
+historial de git) **dieron vacío**, con su salida pegada en el documento.
+
+---
+
+## Fase 7.4 — Despliegue: preparado, no ejecutado (commits `a9ee8f4`, `b45970d`)
+
+### Lo que sí quedó hecho
+
+**`supabase/seed.prod.sql`**: 8 categorías (sin ellas nadie puede publicar,
+porque el formulario exige categoría) y los 10 artículos de FAQ, que siempre
+fueron contenido real. **Sin usuarios** —los del laboratorio tienen contraseñas
+publicadas en este repositorio— y **sin productos**: un marketplace nace vacío, y
+ver la home con su `EmptyState` es el estado correcto de una tienda recién
+abierta, no un fallo del despliegue.
+
+Verificado de verdad, no a ojo: ejecutado contra el Postgres local dentro de una
+transacción revertida → 8 categorías, 10 artículos publicados, 0 productos.
+
+**`docs/DEPLOY.md` §2**: la guía operativa completa, paso a paso y con un
+"deberías ver" en cada uno — `db push`, seed, indexado de la FAQ, confirmación
+de email, importación en Vercel con las variables por entorno, branch protection
+con los dos checks obligatorios, la demostración del flujo y la checklist del
+smoke test. Con los tres pasos de riesgo y su plan B por delante.
+
+**Rama `deploy-smoke`** (commit `571e10c`, **sin publicar**): el cambio visible y
+trivial en el pie que sirve para comprobar de un vistazo que el flujo PR →
+preview → merge → producción funciona.
+
+### Lo que NO se ejecutó, y por qué
+
+Los pasos 2 a 10 de la fase son **clics en dashboards**: crear el proyecto
+Supabase de producción, `supabase login`, conectar Vercel, pegar las claves,
+configurar la protección de rama, correr el smoke test. Nada de eso es
+automatizable desde aquí, y los valores de las claves no pueden pasar por el
+chat — es la regla de oro de la sesión.
+
+**Consecuencia:** no hay URL de producción, ni branch protection activa, ni
+smoke test corrido. Los entregables 1 y 4 de la sesión quedan **pendientes de la
+sesión humana**, con todo lo necesario ya escrito para ejecutarlos de un tirón.
+
+---
+
+## Fase 7.5 — Documentación (commit `cc569e9`)
+
+* **`README.md`** ahora es el del **producto**, no el del curso: qué es
+  MercadoTech, stack, puesta en marcha desde cero con cada comando copiable y en
+  orden ejecutable, usuarios de prueba, capas, flujo del RAG, testing con su
+  prerrequisito de `db reset`, deploy resumido y estructura comentada. Se
+  verificó archivo por archivo que **cada ruta y cada documento que enlaza
+  existe**.
+* **`docs/PLAN_CURSO.md`**: el README anterior, movido **intacto** con una nota
+  de contexto.
+* **`docs/ARQUITECTURA.md`**: seguía en la era de la sesión 2 y afirmaba cosas ya
+  falsas — *"components/, hooks/, services/ vacíos"*, *"no hay pantallas de
+  login"*, *"ningún archivo importa admin.ts"*, *"no existe `app/api/v1/`"*. Se
+  corrigieron esas líneas y se sumaron cinco secciones con lo construido
+  después: frontend (S3), RAG (S4), Skills y MCP (S5), testing y CI (S6),
+  despliegue y performance (S7).
+
+---
+
+## Decisiones ejercidas
+
+| # | Decisión | Por qué |
+|---|---|---|
+| 1 | **Deploy 100 % por la interfaz de Vercel**, secretos a mano en su dashboard | Directiva del docente. Se eliminó la opción de CLI/Actions: sin tokens de deploy, sin jobs de despliegue en el workflow, ningún secreto en GitHub Actions |
+| 2 | **Seed de producción sin usuarios ni productos** | Los usuarios de laboratorio tienen contraseñas públicas en el repositorio; y un marketplace lo llenan sus vendedores |
+| 3 | **Los previews comparten la base de datos de producción** | Un solo proyecto Supabase por alumno en el plan gratuito. Riesgo real y asumido: un preview escribe sobre datos reales. Documentado, con el staging separado como mejora |
+| 4 | **Confirmación de email desactivada en producción** | Supabase hosted la trae activa y este proyecto no tiene proveedor de correo configurado: sin desactivarla, nadie podría registrarse. Decisión de laboratorio, no de producto |
+| 5 | **El repositorio se mantiene público** | Habilita branch protection en el plan gratuito. A cambio, los greps anti-fuga pasan de higiene a obligación |
+| 6 | **13/13 E2E en vez de 14/14** | El test que faltaba documentaba el defecto ya corregido (ver Paso 0) |
+| 7 | **No se pagó la deuda de Server Components** | Cambiar el contrato de capas a mitad de un go-live es el riesgo que esta sesión existe para evitar. Medido y anotado para quien lo tome |
+
+---
+
+## Criterios de aceptación
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| El hallazgo del kanban cerrado, sin `fixme` | ✅ | commit `27fcf97`; 13/13 en chromium, el navegador del CI |
+| PR de prueba con CI + preview, merge bloqueado en rojo y permitido en verde | ⏳ **pendiente** | rama `deploy-smoke` lista sin publicar; requiere Vercel y branch protection (pasos humanos) |
+| La URL de producción pasa el smoke test | ⏳ **pendiente** | checklist escrita en `DEPLOY.md` §2.9; no hay URL todavía |
+| Lighthouse ≥ 90 en home y catálogo | ❌ **no alcanzado** | 72 y 62. Causa medida y explicada: `PERFORMANCE.md` §7 |
+| CLS < 0.1 | ✅ en la home (0.118 → 0) · ❌ en catálogo y producto (0.118) | `PERFORMANCE.md` §4.1 y §5 |
+| Un desarrollador nuevo levanta el proyecto solo con el README | ✅ | cada ruta, documento y comando verificados contra el repositorio |
+| `lint`, `type-check`, `test` y `build` verdes | ✅ | 293 unitarios en 3 s; build verde; type-check del MCP también |
+
+---
+
+## Qué quedó fuera, a propósito
+
+* **Proyecto de staging separado.** Los previews seguirán tocando la base de
+  producción hasta que exista.
+* **E2E contra previews en el CI.** Queda como herramienta manual documentada:
+  los specs crean pedidos y productos de verdad.
+* **`@next/bundle-analyzer`.** El build usa Turbopack; el peso se lee del
+  resumen de `next build`.
+* **Server Components para el catálogo.** La deuda medida de §7.2.
+* **Todo lo de voz.** Es la sesión 8.
+
+## Para la sesión 8
+
+1. **Ejecutar el go-live pendiente**: `DEPLOY.md` §2, de principio a fin, y
+   anotar en él la URL y los resultados del smoke test. Completar también la
+   línea "Producción" del `README.md`.
+2. El agente de voz amplía `/soporte` sobre el mismo RAG y reutiliza la tool
+   `get_order_status` del servidor MCP.
+3. Deuda abierta y medida: catálogo desde el servidor (LCP y CLS), el CLS de
+   `/categoria/[slug]` y `/producto/[id]`, y el proyecto de staging.
+
+---
+
 # Sesión 6 — Testing y CI con GitHub Actions (2026-08-31)
 
 MercadoTech no gana ninguna pantalla en esta sesión. Gana una **red de
