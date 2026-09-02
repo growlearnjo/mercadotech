@@ -1,18 +1,37 @@
 "use client";
 
+import dynamic from "next/dynamic";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  SortableImageGallery,
-  type GalleryImage,
-} from "@/components/seller/SortableImageGallery";
+import { LoadingState } from "@/components/shared/LoadingState";
+import type { GalleryImage } from "@/components/seller/SortableImageGallery";
 import { PRODUCT_CONDITIONS } from "@/lib/constants/roles";
 import { TITLE_MAX } from "@/lib/constants/product";
 import type { ProductCondition } from "@/lib/constants/roles";
 import type { ProductErrors } from "@/lib/validators/product";
 import type { Category } from "@/types/product";
+
+/**
+ * La galería carga aparte (Fase 7.2): arrastra consigo dnd-kit, que es la
+ * dependencia más pesada del formulario y no hace falta para escribir título,
+ * precio o stock. `ssr: false` porque el arrastre es puro navegador; el
+ * esqueleto reserva su sitio para que el formulario no salte al llegar.
+ */
+const SortableImageGallery = dynamic(
+  () =>
+    import("@/components/seller/SortableImageGallery").then(
+      (m) => m.SortableImageGallery,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <LoadingState variant="grid" count={3} label="Cargando galería de imágenes" />
+    ),
+  },
+);
 
 export type ProductFormValues = {
   title: string;
