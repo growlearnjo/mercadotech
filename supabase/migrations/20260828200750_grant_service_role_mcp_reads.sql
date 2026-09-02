@@ -40,4 +40,10 @@ grant select on public.profiles to service_role;
 -- match_knowledge es SECURITY DEFINER y ya filtra por umbral y tipo de
 -- fuente: darle EXECUTE a service_role no amplía lo que se puede leer, solo
 -- permite que el MCP haga la MISMA búsqueda vectorial que ya hace la web.
-grant execute on function public.match_knowledge(vector, text, integer, double precision) to service_role;
+-- El tipo va calificado como `extensions.vector` y no como `vector` a secas:
+-- pgvector se instala en el schema `extensions`, que está en el search_path
+-- del stack LOCAL pero no en el de Supabase hosted. Sin calificar, esta línea
+-- pasaba en local y reventaba en producción con 42704 ("type vector does not
+-- exist") — el primer `db push` real lo destapó. La migración hermana
+-- (20260826150200_create_match_knowledge) ya lo escribía así.
+grant execute on function public.match_knowledge(extensions.vector, text, integer, double precision) to service_role;
