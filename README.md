@@ -1,89 +1,268 @@
-# MercadoTech — Plan maestro del proyecto
+# MercadoTech
 
-Plataforma de compra/venta de **productos tecnológicos** tipo Mercado Libre, con un
-**centro de soporte operado por agentes de voz**. Este directorio contiene la
-planeación completa del proyecto, alineada 1:1 con las 8 sesiones del curso
-**Claude Code for Developers**, siguiendo el mismo patrón de especificaciones que
-se usó en ReadHub (`ReadHub.md`, `ReadHub_sesion3.md`, `ReadHub_sesion4.md`).
+Marketplace de productos tecnológicos: los compradores navegan un catálogo,
+preguntan, reseñan y compran; los vendedores publican y gestionan sus pedidos;
+y dos asistentes con RAG —uno de compras sobre el catálogo, otro de soporte
+sobre la FAQ— responden **citando sus fuentes**.
 
-## Cómo usar estos archivos
+> **No hay pasarela de pago.** El checkout es simulado a propósito: crea el
+> pedido y descuenta stock, sin cobrar nada. Es una decisión de diseño del
+> proyecto, no una funcionalidad pendiente.
 
-1. Cada sesión tiene su propio archivo `MercadoTech_sesionN.md`.
-2. Cada archivo está dividido en **FASES numeradas** (ej. Fase 2.3).
-3. Cada fase incluye un **Prompt sugerido**: el texto exacto para pedirle a Claude
-   Code que ejecute esa fase. Se ejecutan **en orden**, una fase por prompt.
-4. Antes de la primera fase de cada sesión, el primer prompt siempre es:
-   > "Lee `mercadotech/MercadoTech_sesionN.md` completo y confírmame que entiendes
-   > el alcance. No generes código todavía."
-5. Cada sesión tiene una sección de **Restricciones** (lo que NO se debe hacer en
-   esa sesión) y **Criterios de aceptación** (cómo saber que la sesión está completa).
+**Producción:** _(pendiente: se completa con la URL de Vercel tras el go-live,
+[`docs/DEPLOY.md`](docs/DEPLOY.md) §2.6)_
 
-## Mapa curso → sesión → entregable
+---
 
-| Sesión | Tema del curso | Archivo | Entregable principal |
-|---|---|---|---|
-| 1 | Fundamentos, Setup y Estrategia de Costos | `MercadoTech_sesion1.md` | Repo + CLAUDE.md + estrategia de modelos/costos + biblioteca de prompts + test A/B |
-| 2 | Arquitectura Escalable y Backend con Supabase | `MercadoTech_sesion2.md` | Proyecto Next.js 15 + esquema SQL + migraciones + RLS + Storage + seed + validación RLS |
-| 3 | UI Inteligente y Frontend Multimodal | `MercadoTech_sesion3.md` | Todas las pantallas + hooks + services + drag & drop (galería y kanban de pedidos) |
-| 4 | Integrando IA en tu SaaS con RAG | `MercadoTech_sesion4.md` | pgvector + embeddings + búsqueda semántica + asistente de compras y soporte (texto) |
-| 5 | Custom Skills y Protocolo MCP | `MercadoTech_sesion5.md` | 4 Skills de gobernanza + servidor MCP (Tools/Resources/Prompts) |
-| 6 | Testing, Debugging y Automatización | `MercadoTech_sesion6.md` | Vitest (unit) + Playwright (E2E comprador y vendedor) + metodología de debugging |
-| 7 | Despliegue y CI/CD con IA | `MercadoTech_sesion7.md` | GitHub Actions + performance/Core Web Vitals + deploy a Vercel + documentación |
-| 8 | Demo Final y Roadmap | `MercadoTech_sesion8.md` | **Agente de voz de soporte** (STT/TTS + orquestador con herramientas) + demo + roadmap |
+## Qué se puede hacer
 
-## Stack global (decidido desde el inicio)
+| Como comprador | Como vendedor |
+|---|---|
+| Navegar el catálogo con filtros por condición, precio y orden | Publicar productos con galería de imágenes reordenable |
+| Buscar por texto exacto **o por significado** (búsqueda semántica) | Editar y activar/desactivar sus publicaciones |
+| Ver detalle con galería, preguntas y reseñas verificadas | Mover pedidos por un tablero kanban (con teclado, accesible) |
+| Guardar favoritos, carrito y checkout simulado | Ver solo sus propios pedidos e ítems |
+| Seguir sus pedidos por estado | |
+| Preguntar al asesor de compras y al soporte, con citas | |
 
-- **Next.js 15** (App Router) + **React 19** + **TypeScript**
-- **TailwindCSS v4** + **shadcn/ui**
-- **Supabase**: Postgres, Auth, Storage, pgvector, RLS
-- **IA (nivel gratuito de Hugging Face)**: `sentence-transformers/all-MiniLM-L6-v2`
-  (embeddings, 384 dims) + `meta-llama/Llama-3.1-8B-Instruct` (chat) — con capa de
-  abstracción para cambiar de proveedor sin tocar el resto del código
-- **Voz**: Web Speech API del navegador (STT `SpeechRecognition` + TTS
-  `speechSynthesis`) detrás de una interfaz `VoiceProvider` intercambiable
-- **MCP**: `@modelcontextprotocol/sdk` sobre stdio
-- **Testing**: Vitest + Playwright · **CI/CD**: GitHub Actions + Vercel
+---
 
-## Principio rector: independencia de funciones, módulos y componentes
+## Stack
 
-Toda decisión de las 8 sesiones respeta esta separación por capas. Es la regla
-número uno del proyecto y las Skills de la sesión 5 la hacen cumplir:
+| Capa | Elección |
+|---|---|
+| Framework | Next.js 15 (App Router, Turbopack), React 19, TypeScript estricto |
+| Estilos | Tailwind CSS 4 + shadcn/ui (estilo *base-nova*, sobre Base UI) |
+| Datos, auth y archivos | Supabase (Postgres + RLS + Auth + Storage + pgvector) |
+| IA | Hugging Face Inference — embeddings y chat, nivel gratuito |
+| Arrastrar y soltar | dnd-kit |
+| Tests | Vitest (unitarios) + Playwright (E2E) |
+| CI/CD | GitHub Actions → Vercel |
 
-```
-components/       Presentación PURA. Reciben props, no hacen fetching, no conocen Supabase.
-hooks/            Estado de cliente. Llaman a services. Cero lógica de negocio propia.
-services/         Lógica de negocio. Cada función acepta un SupabaseClient INYECTABLE
-                  (default: cliente de navegador) — así hooks y Route Handlers comparten
-                  la misma lógica, y los tests la mockean sin red.
-lib/supabase/     Clientes: browser (anon), server (cookies+RLS), admin (service role).
-lib/ai/           ÚNICOS archivos que conocen la API del proveedor de IA.
-lib/voice/        ÚNICOS archivos que conocen la API de voz del navegador/proveedor.
-lib/validators/   Validación framework-agnóstica, compartida entre UI y servidor.
-lib/constants/    Todos los tunables (IA, roles, límites) centralizados y documentados.
-types/            Tipos de dominio + database.ts generado por Supabase.
-app/api/v1/       Route Handlers DELGADOS, solo para lo que no puede correr en el
-                  navegador (secretos de IA, service role, cookies de sesión).
+---
+
+## Puesta en marcha local
+
+**Requisitos:** Node.js 24, Docker Desktop **corriendo** (Supabase local lo
+necesita) y la [CLI de Supabase](https://supabase.com/docs/guides/cli).
+
+```bash
+git clone https://github.com/growlearnjo/mercadotech.git
+cd mercadotech
+npm ci
 ```
 
-Reglas derivadas (aplican en todas las sesiones):
+```bash
+supabase start        # levanta Postgres + Auth + Storage + Studio en Docker
+```
 
-1. **Un archivo, una responsabilidad.** `product.service.ts` no sabe de pedidos;
-   `order.service.ts` no sabe de embeddings.
-2. **Sin barrels.** Se importa el archivo específico, nunca "todo el módulo".
-3. **La UI nunca importa `lib/ai/`, `lib/voice/` ni el cliente admin.**
-4. **Un solo camino de datos:** hooks → services → Supabase (RLS). NO se construye
-   una capa REST paralela "por si acaso" (lección aprendida de ReadHub: quedó una
-   API v1 completa que el frontend nunca llamó).
-5. **Todo tunable vive en `lib/constants/`** con un comentario que justifica su valor.
+> Si falla la primera vez, vuelve a intentarlo: Docker Desktop suele tardar en
+> terminar de arrancar.
 
-## Lección de ReadHub incorporada
+```bash
+cp .env.example .env.local
+supabase status -o env     # copia estos valores a .env.local
+```
 
-- Los embeddings de Hugging Face **deben** usar el SDK `@huggingface/inference`
-  (`featureExtraction`), no el router REST (no soporta feature-extraction).
-- La disponibilidad de modelos gratuitos del router **rota**: el modelo de chat se
-  configura por variable de entorno para poder cambiarlo sin tocar código.
-- La dimensión del vector (384) queda fijada en la columna SQL: cambiar de modelo
-  de embeddings implica migración (`ALTER COLUMN ... TYPE vector(N)` + recrear
-  índice y función).
-- En CI se fija la versión de npm (deps opcionales de Linux ausentes en el lockfile
-  generado en Windows) y el E2E corre contra un Supabase local efímero, sin secretos.
+Solo falta una variable que no sale de ahí: `HUGGINGFACEHUB_API_TOKEN`, que se
+crea en Hugging Face → Settings → Access Tokens (tipo *Read*). **Sin ella todo
+funciona menos la IA**: la búsqueda semántica y los dos asistentes fallan con un
+error controlado.
+
+```bash
+supabase db reset     # aplica migrations/ y siembra datos de prueba
+npm run db:images     # descarga las imágenes de muestra y las sube a Storage
+npm run dev           # http://localhost:3000
+```
+
+`db:images` es un paso aparte porque el seed crea las **filas** de
+`product_images` pero no los **archivos**; sin él el catálogo se ve con
+placeholders.
+
+### Usuarios de prueba
+
+Los crea `supabase db reset`, todos con la contraseña `MercadoTech123!`:
+
+| Correo | Rol |
+|---|---|
+| `buyer1@mercadotech.test`, `buyer2@mercadotech.test` | comprador |
+| `seller1@mercadotech.test` (TecnoStore Perú), `seller2@mercadotech.test` (GamerZone Lima) | vendedor |
+
+---
+
+## Comandos
+
+```bash
+npm run dev            # servidor de desarrollo
+npm run build          # build de producción
+npm run start          # sirve el build de producción
+npm run lint           # ESLint
+npm run type-check     # tsc --noEmit
+npm run test           # Vitest: 293 tests, ~3 s, SIN red ni Docker
+npm run test:coverage  # lo mismo + reporte en coverage/
+npm run test:e2e       # Playwright — exige `supabase db reset` antes
+npm run test:e2e:ui    # el mismo runner, en modo interactivo
+npm run db:types       # regenera types/database.ts desde el esquema local
+npm run db:images      # sube las imágenes de muestra a Storage
+npx tsx scripts/index-all.ts   # reindexa catálogo + FAQ para el RAG
+```
+
+Base de datos:
+
+```bash
+supabase start                   # levanta el stack local
+supabase stop                    # lo detiene
+supabase db reset                # reconstruye: migrations/ + seed.sql
+supabase migration new <nombre>  # nueva migración con timestamp
+```
+
+Servidor MCP (solo lectura), **siempre desde la raíz** — el alias `@/*` resuelve
+a `./*` y desde otra carpeta los imports fallan:
+
+```bash
+npx tsx mcp/src/index.ts                                      # por stdio
+npx @modelcontextprotocol/inspector npx tsx mcp/src/index.ts   # Inspector
+node mcp/scripts/rpc.mjs tools/list                            # cliente del repo
+```
+
+---
+
+## Arquitectura en una pantalla
+
+Un solo camino de datos, sin API REST paralela:
+
+```
+components/   Presentación PURA: reciben props. No hacen fetching ni conocen Supabase.
+     ▲
+hooks/        Estado de cliente. Llaman a services; sin lógica de negocio propia.
+     ▲
+services/     Lógica de negocio. Cada función recibe el cliente Supabase INYECTABLE,
+     ▲        así los tests la ejercitan sin red.
+lib/supabase/ browser (anon) · server (cookies + RLS) · admin (service role, server-only)
+     ▲
+Postgres      La RLS es la que autoriza. La UI no es la que protege.
+```
+
+Las **páginas** (`app/**/page.tsx`) son el único punto donde un hook se
+encuentra con un componente.
+
+Al lado, dos módulos que solo consumen esas capas:
+
+* `lib/ai/` — los **únicos** archivos que conocen la API del proveedor de IA. El
+  navegador llega a ella por una sola cadena: hook → `fetch` a `app/api/v1/*` →
+  service → `lib/ai/`.
+* `mcp/` — servidor MCP de **solo lectura** (10 tools, 7 resources, 5 prompts),
+  un proceso Node aparte que reutiliza `services/` sin reimplementar nada.
+
+Detalle completo, modelo relacional y políticas RLS en
+[`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md).
+
+### Cómo responden los asistentes (RAG)
+
+```
+pregunta ──> embedding (Hugging Face) ──> búsqueda vectorial en
+             knowledge_embeddings (pgvector, cosine)
+                     │
+                     ▼
+          los K fragmentos más cercanos ──> prompt con contexto ──> respuesta
+                     │                                                  │
+                     └──────────────> citas de las fuentes usadas <──────┘
+```
+
+El asistente **solo responde con lo que encuentra**: si la búsqueda no trae nada
+relevante, lo dice en vez de inventar. Casos de prueba y calibración en
+[`docs/RAG.md`](docs/RAG.md).
+
+---
+
+## Testing
+
+```bash
+npm run test        # 293 unitarios, ~3 s
+```
+
+Los unitarios **no tocan la red**: pasan con Docker apagado. Reciben el cliente
+Supabase por parámetro en vez de simular el módulo, así que prueban la lógica
+real y no un doble.
+
+```bash
+supabase db reset   # PRERREQUISITO, no opcional
+npm run test:e2e    # 13 specs de Playwright
+```
+
+Los E2E corren contra el Supabase local y **crean pedidos y productos de
+verdad**: sin el `db reset` previo, la segunda corrida arranca sobre los restos
+de la primera. En local corren en Chromium, Firefox y WebKit; el CI usa
+Chromium.
+
+---
+
+## Despliegue
+
+```
+Pull Request ──> CI (checks + e2e) ──verde──> merge a main ──> PRODUCCIÓN
+     │                   │
+     │                 rojo ──> 🔒 merge bloqueado
+     └──> preview con URL propia
+```
+
+Cada push y cada PR dispara el workflow de GitHub Actions, que corre **sin un
+solo secreto**: levanta su propio Supabase efímero. Los checks son obligatorios
+para entrar a `main`, y Vercel publica producción con cada merge.
+
+Guía completa —variables por entorno, migración de la base hosted, smoke test y
+**rollback**— en [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
+---
+
+## Estructura del proyecto
+
+```
+app/                 Rutas (App Router)
+  (shop)/            tienda: catálogo, producto, carrito, pedidos, asistentes
+  (seller)/          panel del vendedor, siempre bajo /vendedor/
+  (auth)/            login y registro
+  api/v1/            Route Handlers delgados: solo lo que no puede ir en el navegador
+components/          Presentación pura (ui/ shared/ layout/ + una carpeta por dominio)
+hooks/               Estado de cliente
+services/            Lógica de negocio, con el cliente Supabase inyectable
+lib/
+  supabase/          los tres clientes: browser, server, admin
+  ai/                embeddings, chat, prompts y armado del contexto
+  validators/        validación compartida entre UI y servidor
+  constants/         todos los tunables, cada uno con su porqué
+types/               tipos de dominio + database.ts generado por Supabase
+supabase/
+  migrations/        ÚNICA fuente de verdad del esquema
+  seed.sql           datos de laboratorio (nunca tocan producción)
+  seed.prod.sql      seed mínimo de producción: 8 categorías + 10 artículos de FAQ
+e2e/                 specs de Playwright, page objects y fixtures
+mcp/                 servidor MCP de solo lectura (proceso Node aparte)
+scripts/             utilidades fuera del build (seed de imágenes, indexado)
+docs/                arquitectura, bitácora, RAG, debugging, performance, deploy
+```
+
+---
+
+## Documentación
+
+| Documento | Qué responde |
+|---|---|
+| [`ARQUITECTURA.md`](docs/ARQUITECTURA.md) | Cómo está construido y por qué |
+| [`DEPLOY.md`](docs/DEPLOY.md) | Dónde vive cada clave, cómo desplegar, cómo volver atrás |
+| [`PERFORMANCE.md`](docs/PERFORMANCE.md) | Qué se midió, qué se optimizó y qué no valió la pena |
+| [`RAG.md`](docs/RAG.md) | Flujo del RAG, casos de prueba y calibración |
+| [`DEBUGGING.md`](docs/DEBUGGING.md) | Metodología de depuración y errores típicos |
+| [`BITACORA.md`](docs/BITACORA.md) | Qué se decidió en cada sesión, y por qué |
+| [`ESTRUCTURA.md`](docs/ESTRUCTURA.md) | Mapa de carpetas |
+| [`mcp/README.md`](mcp/README.md) | El servidor MCP por dentro |
+| [`PLAN_CURSO.md`](docs/PLAN_CURSO.md) | El plan original del curso que originó el proyecto |
+
+`CLAUDE.md` en la raíz es el contrato con Claude Code: reglas de arquitectura y
+convenciones que cualquier cambio debe respetar.
+
+---
+
+## Qué sigue
+
+La sesión 8 añade un agente de **voz** al soporte, sobre el mismo RAG.

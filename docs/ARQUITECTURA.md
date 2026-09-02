@@ -1,11 +1,17 @@
 # Arquitectura de MercadoTech
 
-Este documento describe **lo que existe hoy** en el repositorio al cierre de
-la sesión 2 (infraestructura: proyecto Next.js, esquema de base de datos,
-RLS, Storage, datos de prueba y validación). Está escrito para alguien que
-se une al proyecto ahora mismo y no participó en las sesiones anteriores —
-no asume ese contexto. No hay pantallas ni lógica de negocio todavía: eso
-llega en la sesión 3.
+Este documento describe **lo que existe hoy** en el repositorio, al cierre de
+la sesión 7: base de datos y RLS, el frontend completo, el RAG de los dos
+asistentes, el servidor MCP, la red de tests con su CI, y el despliegue.
+
+Está escrito para alguien que se une al proyecto ahora y no participó en
+ninguna sesión anterior — no asume ese contexto. Y documenta **lo construido**,
+no lo planeado: donde el código difiere de alguna especificación, gana el
+código y queda anotado. El plan original vive aparte, en
+[`PLAN_CURSO.md`](PLAN_CURSO.md).
+
+Las secciones 1 a 8 son la base de datos y la estructura, estables desde la
+sesión 2. Las secciones 9 a 13 cuentan lo que se construyó encima.
 
 ## Tabla de contenidos
 
@@ -17,7 +23,12 @@ llega en la sesión 3.
 6. [Flujo de autenticación](#6-flujo-de-autenticación)
 7. [Estrategia de escalabilidad](#7-estrategia-de-escalabilidad)
 8. [Políticas RLS](#8-políticas-rls)
-9. [Qué sigue](#9-qué-sigue)
+9. [Frontend: pantallas, hooks y services](#9-frontend-pantallas-hooks-y-services)
+10. [RAG: búsqueda semántica y asistentes](#10-rag-búsqueda-semántica-y-asistentes)
+11. [Gobernanza y servidor MCP](#11-gobernanza-y-servidor-mcp)
+12. [Testing e integración continua](#12-testing-e-integración-continua)
+13. [Despliegue y performance](#13-despliegue-y-performance)
+14. [Qué sigue](#14-qué-sigue)
 
 ---
 
@@ -34,10 +45,10 @@ components/  →  hooks/  →  services/  →  lib/supabase/  →  Postgres (RLS
 ```
 
 * **`components/`** — presentación pura. Reciben props, no hacen fetching,
-  no conocen Supabase. **Hoy está vacía** (con `.gitkeep`): se llena en la
-  sesión 3.
+  no conocen Supabase. Organizada en `ui/` (generados por shadcn), `shared/`,
+  `layout/` y una carpeta por dominio de pantalla.
 * **`hooks/`** — estado de cliente (React). Llaman a `services/`, no tienen
-  lógica de negocio propia. **Vacía hoy.**
+  lógica de negocio propia. 17 hoy (ver §9).
 * **`services/`** — lógica de negocio. Cada función acepta un
   `SupabaseClient` inyectable, para que hooks y Route Handlers compartan la
   misma lógica y los tests la puedan mockear sin red. **Vacía hoy** — el
@@ -62,25 +73,31 @@ descuenta stock).
 ```
 mercadotech/
 ├── app/
-│   ├── (auth)/, (shop)/, (seller)/   route groups vacíos — sesión 3
-│   └── api/v1/                       vacío — Route Handlers de sesiones futuras
-├── components/, hooks/, services/    vacíos — sesión 3
+│   ├── (auth)/, (shop)/, (seller)/   route groups con todas las pantallas (§9)
+│   └── api/v1/                       chat · search/semantic · reindex (§10.3)
+├── components/       ui/ shared/ layout/ + una carpeta por dominio
+├── hooks/            17 hooks de estado de cliente
+├── services/         16 services con el cliente Supabase inyectable
 ├── lib/
 │   ├── supabase/     client.ts · server.ts · middleware.ts · admin.ts
 │   ├── constants/    roles.ts (roles y estados del dominio)
-│   ├── validators/   vacío — sesión 3
-│   ├── ai/           vacío — sesión 4
+│   ├── validators/   validación compartida entre UI y servidor
+│   ├── ai/           embeddings · completion · prompts · context-builder
 │   └── voice/        vacío — sesión 8
-├── types/            vacío — se llena con database.ts generado + tipos de dominio
+├── types/            database.ts generado por Supabase + tipos de dominio
 ├── supabase/
-│   ├── migrations/   16 archivos, fuente de verdad del esquema (ver §3)
+│   ├── migrations/   26 archivos, fuente de verdad del esquema (ver §3)
 │   ├── schema.sql     copia de referencia (tablas + función), NO editable a mano
 │   ├── policies.sql   copia de referencia (RLS + Storage), NO editable a mano
-│   ├── seed.sql       datos de prueba (6 usuarios, 16 productos, 6 pedidos...)
+│   ├── seed.sql       datos de laboratorio (6 usuarios, 16 productos, 6 pedidos...)
+│   ├── seed.prod.sql  seed de producción: 8 categorías + 10 FAQ, sin usuarios
 │   └── tests/
 │       └── rls-validation.sql   76 escenarios de RLS (Fase 2.6)
-└── docs/
-    └── ARQUITECTURA.md   este archivo
+├── e2e/              specs de Playwright, page objects y fixtures
+├── mcp/              servidor MCP de solo lectura (proceso Node aparte, §11.2)
+├── scripts/          utilidades fuera del build (seed de imágenes, indexado)
+├── .github/workflows/ci.yml   pipeline de CI (§12.2)
+└── docs/             este archivo, más DEPLOY, PERFORMANCE, RAG, BITACORA…
 ```
 
 Las carpetas vacías existen ya (con `.gitkeep`) porque la Fase 2.1 fijó la
@@ -297,9 +314,9 @@ Supabase+Next.js:
 
 `admin.ts` importa `"server-only"`: intentar importarlo desde un Client
 Component es un **error de build**, no solo una advertencia en el código.
-Ningún archivo de este proyecto lo importa todavía (no hay UI); cuando la
-sesión 3 lo necesite (ej. un endpoint administrativo), debe ser
-exclusivamente desde `app/api/v1/`.
+Hoy lo importan únicamente `app/api/v1/reindex` y los scripts de
+`scripts/`, que es exactamente donde debe estar. El grep que lo verifica
+vive en [`CLAUDE.md`](../CLAUDE.md).
 
 ## 6. Flujo de autenticación
 
@@ -320,10 +337,14 @@ configuradas, el middleware no hace nada (deja pasar la request) — esto es
 intencional: permite que `npm run dev` levante antes de tener un proyecto
 Supabase conectado, un caso real durante esta misma sesión.
 
-No hay pantallas de login/registro todavía (sesión 3); el seed
-(`supabase/seed.sql`) ya crea 6 usuarios con contraseñas reales
-(`MercadoTech123!`, hasheadas con `pgcrypto`) para que esas pantallas
-tengan con qué probar desde el primer día.
+Las pantallas de login y registro viven en `app/(auth)/` desde la sesión 3, y
+el seed (`supabase/seed.sql`) crea 6 usuarios con contraseñas reales
+(`MercadoTech123!`, hasheadas con `pgcrypto`) para probarlas.
+
+En **producción** hay una diferencia que conviene conocer: Supabase hosted trae
+la confirmación por correo **activada**, mientras que en local está apagada. En
+este despliegue se desactivó a propósito, como decisión de laboratorio
+documentada en [`DEPLOY.md`](DEPLOY.md) §2.5.
 
 ## 7. Estrategia de escalabilidad
 
@@ -346,9 +367,10 @@ tengan con qué probar desde el primer día.
   `avatars` están marcados `public`, así que las imágenes se sirven
   directo desde el CDN de Supabase Storage sin pasar por Next.js ni por
   Postgres en cada request.
-* **Un solo camino de datos.** No existe una capa REST (`app/api/v1/`)
-  duplicando lo que ya expone la Data API de Supabase — evita mantener (y
-  escalar) dos superficies de acceso a los mismos datos.
+* **Un solo camino de datos.** No hay una capa REST que duplique lo que ya
+  expone la Data API de Supabase: mantener (y escalar) dos superficies sobre
+  los mismos datos se paga dos veces. `app/api/v1/` acabó teniendo exactamente
+  tres rutas, y solo porque no pueden correr en el navegador (§10.3).
 
 ## 8. Políticas RLS
 
@@ -378,12 +400,261 @@ lectura pública, con escritura/borrado restringidos a la propia carpeta del
 usuario (`{uid}/...`) — el detalle está en la sección de Storage de
 `policies.sql`.
 
-## 9. Qué sigue
 
-* **Sesión 3** — todas las pantallas (catálogo, producto, carrito, checkout,
-  panel de vendedor), los `hooks/` y `services/` que hoy están vacíos, y el
-  drag & drop de galería/kanban.
-* **Sesión 4** — pgvector, embeddings de `support_articles` y búsqueda
-  semántica; el asistente de compras y soporte (texto).
-* **Sesión 8** — el asistente de soporte se convierte en agente de voz
-  sobre `support_tickets`/`ticket_messages`.
+---
+
+## 9. Frontend: pantallas, hooks y services
+
+Construido en la sesión 3. La regla que lo gobierna es la del §1, aplicada sin
+excepciones: **componentes que no hacen fetching, hooks que no tienen lógica de
+negocio, services que reciben el cliente Supabase por parámetro.**
+
+### 9.1 El cliente inyectable
+
+Todas las funciones de `services/` tienen la misma forma:
+
+```ts
+export async function getProduct(id: string, supabase: Client = createClient()) { … }
+```
+
+El cliente va **al final y con valor por defecto**. Eso resuelve tres problemas
+de una vez:
+
+* los **hooks** la llaman sin pasar nada y usan el cliente de navegador;
+* los **Route Handlers** le pasan el cliente de servidor (con cookies) o el de
+  service role, sin duplicar la lógica;
+* los **tests** le pasan un doble y ejercitan la función real sin red.
+
+Los errores de Supabase se lanzan tal cual: traducirlos a estado de interfaz es
+trabajo del hook, no del service.
+
+### 9.2 Qué hay
+
+* **17 hooks** (`useProducts`, `useCart`, `useSellerOrders`, `useChat`…), uno
+  por dominio de pantalla.
+* **16 services** (`product`, `cart`, `order`, `review`, `question`,
+  `favorite`, `seller`, `storage`, `ticket`, `embedding`, `vector-search`,
+  `chat`…).
+* **Un solo camino de datos.** No hay una API REST paralela: `app/api/v1/` tiene
+  exactamente tres rutas, y solo porque no pueden correr en el navegador (§10).
+
+### 9.3 Decisiones que el código dejó fijadas
+
+| Decisión | Por qué |
+|---|---|
+| `numeric` se convierte con `Number()` **en el service** | PostgREST devuelve los numéricos como `string`; los componentes siempre reciben `number` y nunca tienen que saberlo |
+| Los componentes reciben `image_url` **ya resuelta** | Traducir un `image_path` de Storage a URL pública es trabajo del service; el componente solo pinta |
+| El catálogo filtra `is_active = true` **explícitamente** | La RLS solo lo impone a los anónimos: sin el filtro, un vendedor con sesión vería sus propios productos inactivos mezclados en el catálogo público |
+| Los filtros del catálogo viven **en la URL**, y se escriben en una sola llamada | Dos `router.push` seguidos parten del mismo snapshot y el segundo pisa al primero |
+| Las reglas de transición del kanban viven **en el hook** | La RLS valida el estado de destino, no la *secuencia*: que no se pueda retroceder de "enviado" a "pagado" es una regla de negocio, y su mensaje al usuario también |
+| Colores solo por tokens de `app/globals.css` | Un `Badge` con color fijo se queda anclado al tema anterior al alternar claro/oscuro (necesita `transition-none`) |
+
+### 9.4 Rutas
+
+* Tienda: `/`, `/buscar`, `/categoria/[slug]`, `/producto/[id]`, `/favoritos`,
+  `/carrito`, `/pedidos`, `/pedidos/[id]`, `/asistente`, `/soporte`.
+* Vendedor, **siempre** bajo `/vendedor/`: `/vendedor/productos`,
+  `/vendedor/publicar`, `/vendedor/productos/[id]/editar`, `/vendedor/pedidos`.
+  El prefijo no es estético: evita que `/pedidos` del comprador y los del
+  vendedor colisionen.
+* Auth: `/login`, `/register`.
+
+`lib/supabase/middleware.ts` exige sesión en `/carrito`, `/pedidos`,
+`/favoritos`, `/vendedor`, `/asistente` y `/soporte`. **El detalle de producto
+es público** a propósito, y la pestaña de resultados con IA de `/buscar` pide
+sesión por dentro de la página: la búsqueda exacta sigue siendo pública.
+
+---
+
+## 10. RAG: búsqueda semántica y asistentes
+
+Construido en la sesión 4, sobre Hugging Face Inference (nivel gratuito).
+
+### 10.1 La regla de aislamiento
+
+**`lib/ai/` son los únicos archivos del proyecto que conocen la API del
+proveedor de IA.** El navegador llega a ella por una sola cadena, sin atajos:
+
+```
+hook  ──fetch──>  app/api/v1/*  ──>  service  ──>  lib/ai/
+```
+
+Existe por dos razones concretas: el token de Hugging Face es un secreto que no
+puede viajar al navegador, y cambiar de proveedor debe ser editar una carpeta,
+no perseguir imports por todo el repositorio. Los greps que lo verifican están
+en [`CLAUDE.md`](../CLAUDE.md).
+
+### 10.2 El flujo
+
+```
+pregunta ──> embedding (384 dimensiones) ──> match_embeddings() en Postgres
+                                              (pgvector, distancia coseno)
+                                                        │
+                                          los K fragmentos más cercanos
+                                                        │
+                                    prompt con ese contexto ──> respuesta + citas
+```
+
+* `knowledge_embeddings` guarda los vectores de **productos activos y FAQ
+  publicada**; `scripts/index-all.ts` los reconstruye.
+* El asistente **solo responde con lo que encuentra**. Si la búsqueda no trae
+  nada relevante, lo dice en vez de inventar — es la diferencia entre un
+  asistente citable y uno que alucina.
+* La dimensión del vector (384) es parte del esquema: cambiar de modelo de
+  embeddings exige una migración (`ALTER COLUMN … TYPE vector(N)`) y reindexar
+  todo. Por eso el modelo es una constante documentada y no una decisión
+  suelta.
+
+Casos de prueba, umbrales y calibración: [`RAG.md`](RAG.md).
+
+### 10.3 Las tres rutas de `app/api/v1/`
+
+Route Handlers **delgados**, y solo para lo que el navegador no puede hacer:
+
+| Ruta | Por qué no puede vivir en el cliente |
+|---|---|
+| `chat` | Usa el token de Hugging Face |
+| `search/semantic` | Necesita generar el embedding de la consulta |
+| `reindex` | Usa el cliente de service role |
+
+Los tres asistentes exigen sesión, y no solo por privacidad: también protege la
+cuota gratuita del proveedor.
+
+---
+
+## 11. Gobernanza y servidor MCP
+
+Sesión 5. Dos piezas independientes, ambas de solo lectura.
+
+### 11.1 Las cuatro Skills (`.claude/skills/`)
+
+Manuales de puesto que Claude Code carga según lo que se le pida:
+`architecture-enforcer` (antes de crear o mover un archivo),
+`code-reviewer` (revisión de lo ya escrito), `automatic-validator` (el sí/no que
+cierra una fase) y `tech-lead` (decisiones de diseño con trade-offs).
+
+**Las cuatro reportan; ninguna edita código.** Corregir es siempre un paso
+aparte y supervisado. Su fuente de verdad es `CLAUDE.md`: ante contradicción,
+gana `CLAUDE.md`.
+
+### 11.2 El servidor MCP (`mcp/`)
+
+Un proceso Node **aparte de Next** que expone el marketplace a un cliente MCP:
+10 tools, 7 resources y 5 prompts, **todo de solo lectura**, sin datos
+personales de compradores.
+
+Es un consumidor más de `services/`: no reimplementa lógica de negocio y solo
+puede importar de `services/`, `lib/ai/`, `lib/constants/` y `types/`. Tres
+restricciones que parecen detalles y no lo son:
+
+* **No importa `lib/supabase/admin.ts`.** Ese archivo lleva `import
+  "server-only"`, que lanza bajo Node/tsx puro. Sus clientes se construyen en
+  `mcp/src/context.ts`.
+* **Nada escribe en stdout**, porque stdout transporta el JSON-RPC del
+  protocolo. Un `console.log` de depuración corrompe la sesión entera; hay un
+  `stdout-guard.ts` para que no ocurra por descuido.
+* **Se lanza siempre desde la raíz**: el alias `@/*` resuelve a `./*`, y desde
+  otra carpeta los imports de `services/` fallan.
+
+Detalle: [`mcp/README.md`](../mcp/README.md).
+
+---
+
+## 12. Testing e integración continua
+
+Sesión 6: **293 tests unitarios** (~3 s) y **13 specs E2E**.
+
+### 12.1 Cómo están escritos
+
+* El test unitario vive **junto** al archivo que prueba; los E2E, en `e2e/`.
+* Los unitarios **inyectan el cliente Supabase por parámetro** — nunca
+  `vi.mock` de `lib/supabase/*`. La única excepción es `lib/ai/*`, que se simula
+  por módulo porque por diseño no es inyectable, y va comentada donde ocurre.
+* **La suite unitaria no toca la red**: pasa con Docker apagado. Un test que
+  solo pasa con el stack levantado está mal escrito.
+* **El test documenta el contrato REAL, no el deseado.** Si algo parece un bug,
+  se ancla con `// comportamiento actual, revisar:` y va a la bitácora; no se
+  cambia producción para que un test luzca mejor.
+* Los valores frontera salen de las constantes reales importadas, y las
+  aserciones de dinero de `formatPrice`: `Intl` separa "S/" del monto con un
+  espacio duro (U+00A0), invisible al leer y letal al comparar.
+
+### 12.2 El pipeline
+
+`.github/workflows/ci.yml`, en cada push a `main` y cada PR, con **cero
+secretos**:
+
+| Job | Qué hace |
+|---|---|
+| `checks` | type-check, lint, `test:coverage`, type-check del MCP; sube la cobertura como artefacto |
+| `e2e` | `needs: checks`. Levanta un Supabase efímero, lo siembra, lee sus credenciales en caliente y corre Playwright en Chromium contra `build && start` |
+
+Dos detalles que no se tocan a la ligera:
+
+* `package.json` fija `"packageManager": "npm@11.6.2"` y el workflow **pinea esa
+  misma versión** antes de `npm ci`. El lockfile se generó con ella en Windows,
+  y un npm más nuevo en Linux resuelve distinto las dependencias opcionales y
+  rompe `npm ci`. Si se regenera el lockfile, hay que cambiar los dos sitios a
+  la vez.
+* `mcp/` está **excluido** del `tsconfig.json` de la raíz: tiene su propio
+  type-check, que el CI ejecuta en su carpeta.
+
+---
+
+## 13. Despliegue y performance
+
+Sesión 7.
+
+### 13.1 Despliegue
+
+```
+Pull Request ──> CI (checks + e2e) ──verde──> merge a main ──> Vercel: PRODUCCIÓN
+     │                   │
+     │                 rojo ──> 🔒 merge bloqueado (branch protection)
+     └──> Vercel: PREVIEW (URL propia)
+```
+
+Vercel se conecta a GitHub **por su propia interfaz**: sin CLI, sin tokens de
+deploy y sin jobs de despliegue en el workflow. Los secretos se cargan a mano en
+el dashboard de Vercel, y **GitHub Actions no recibe ninguno** — el CI levanta
+su propio Supabase efímero, así que no los necesita.
+
+En producción, el esquema se aplica con `supabase db push` desde las migraciones
+del repositorio: **el remoto nunca se edita a mano**. El catálogo nace vacío a
+propósito (`seed.prod.sql` trae solo categorías y FAQ, sin usuarios ni
+productos).
+
+Variables, pasos, smoke test y rollback: [`DEPLOY.md`](DEPLOY.md).
+
+### 13.2 Performance: lo que la medición dejó al descubierto
+
+La regla de la fase fue **medir → cambiar → medir**, siempre contra build de
+producción. Lo conseguido: el CLS de la home pasó de 0.118 a **0**, y las dos
+rutas más pesadas bajaron 21 kB cada una cargando la galería bajo demanda.
+
+Lo que **no** se consiguió, y su causa, importa más: el objetivo de Lighthouse
+≥ 90 no se alcanza porque **el catálogo se pide desde el cliente**. El HTML
+inicial no trae ni una tarjeta; hay que descargar ~300 kB de JavaScript,
+hidratar y recién entonces pedir los datos y las imágenes. Eso son ~3.9 s de
+"Load Delay" en el LCP que ninguna optimización de imagen puede tocar.
+
+Arreglarlo significa servir el catálogo desde **Server Components**, lo que
+cambia la regla `hooks → services` del §1. Es la deuda técnica principal del
+proyecto, está medida, y no se pagó en la sesión 7 porque cambiar el contrato de
+capas a mitad de un go-live es exactamente el riesgo que esa sesión existía para
+evitar.
+
+Números, metodología y los tres errores de medición cometidos por el camino:
+[`PERFORMANCE.md`](PERFORMANCE.md).
+
+---
+
+## 14. Qué sigue
+
+* **Sesión 8** — el asistente de soporte se convierte en agente de voz sobre
+  `support_tickets` / `ticket_messages`, reutilizando el mismo RAG y la tool
+  `get_order_status` del servidor MCP.
+* **Deuda técnica registrada** — servir el catálogo desde el servidor (§13.2);
+  el CLS de `/categoria/[slug]` y `/producto/[id]`, que sigue en 0.118; y un
+  proyecto Supabase de staging separado del de producción, hoy compartido con
+  los previews.
