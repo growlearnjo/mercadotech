@@ -8,6 +8,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type KeyboardCoordinateGetter,
 } from "@dnd-kit/core";
 
 import { OrderKanbanCard } from "@/components/seller/OrderKanbanCard";
@@ -74,6 +75,58 @@ function Column({
 }
 
 /**
+ * Getter de coordenadas del teclado para el kanban (Fase 7.2).
+ *
+ * POR QUÉ NO SE USA `sortableKeyboardCoordinates` de @dnd-kit/sortable, que es
+ * lo que usa `SortableImageGallery`: ese getter hace
+ * `droppableContainers.get(active.id)` y descarta el movimiento si no
+ * encuentra nada. Solo `useSortable` registra un elemento como draggable Y
+ * droppable a la vez; aquí las tarjetas son `useDraggable` y los droppables
+ * son las columnas, así que ese `get` siempre da undefined y el getter
+ * devuelve `undefined`: la tarjeta no se mueve ni un pixel. Comprobado con la
+ * región aria-live, que tras ArrowRight seguía anunciando la columna origen.
+ *
+ * QUÉ HACE ESTE: ordena las columnas habilitadas por su borde izquierdo, ubica
+ * la tarjeta en esa fila y salta a la columna contigua — una pulsación, una
+ * columna. Devuelve el `left`/`top` de la columna destino porque el
+ * `KeyboardSensor` inicializa sus coordenadas con el `left`/`top` del nodo
+ * arrastrado: la resta da el desplazamiento exacto.
+ *
+ * ArrowLeft SÍ está permitido aunque el flujo de estados no admita retrocesos:
+ * el rechazo es responsabilidad del hook (`useSellerOrders` avisa con un
+ * toast), no del teclado. Si el getter bloqueara el intento, el usuario de
+ * teclado no recibiría ninguna explicación.
+ */
+const kanbanKeyboardCoordinates: KeyboardCoordinateGetter = (
+  event,
+  { context: { collisionRect, droppableRects, droppableContainers } },
+) => {
+  if (event.code !== "ArrowRight" && event.code !== "ArrowLeft") return;
+  event.preventDefault();
+  if (!collisionRect) return;
+
+  const columnas = droppableContainers
+    .getEnabled()
+    .flatMap((entry) => {
+      const rect = entry ? droppableRects.get(entry.id) : undefined;
+      return rect ? [rect] : [];
+    })
+    .sort((a, b) => a.left - b.left);
+  if (columnas.length === 0) return;
+
+  // La columna actual es la que contiene el centro de la tarjeta; si el
+  // arrastre ya la sacó de toda columna, la más cercana por la izquierda.
+  const centro = collisionRect.left + collisionRect.width / 2;
+  const actual = columnas.findLastIndex((rect) => rect.left <= centro);
+  if (actual === -1) return;
+
+  const destino = columnas[actual + (event.code === "ArrowRight" ? 1 : -1)];
+  if (!destino) return;
+
+  return { x: destino.left, y: destino.top };
+};
+
+/**
  * Drag & drop #2 — kanban de pedidos.
  *
  * Soltar una tarjeta en otra columna cambia `orders.status`. La columna
@@ -83,7 +136,11 @@ function Column({
 export function OrdersKanban({ byStatus, onMove }: OrdersKanbanProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor),
+    useSensor(KeyboardSensor, {
+      // Sin getter, el default de dnd-kit mueve 25 px por flecha y las
+      // columnas miden 240 px: la tarjeta nunca salía de la suya.
+      coordinateGetter: kanbanKeyboardCoordinates,
+    }),
   );
 
   const handleDragEnd = (event: DragEndEvent) => {

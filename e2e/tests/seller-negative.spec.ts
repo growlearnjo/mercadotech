@@ -23,12 +23,13 @@ test.describe("Vendedor — casos negativos", () => {
     await expect(page.getByTestId("seller-products-table")).toHaveCount(0);
   });
 
-  // Bloqueado por el HALLAZGO de accesibilidad documentado en
-  // seller-flow.spec.ts: una pulsación de flecha no saca la tarjeta de su
-  // columna, así que el intento de retroceso ni siquiera llega a producirse y
-  // el toast no aparece. La regla en sí SÍ está cubierta sin navegador, en
-  // hooks/useSellerOrders.test.ts ("rechaza retroceder de …").
-  test.fixme("un pedido 'enviado' no puede retroceder a 'pagado': toast y la tarjeta no se mueve", async ({
+  // Estuvo en `test.fixme` desde la 6.6 por el hallazgo de accesibilidad del
+  // kanban (ver seller-flow.spec.ts): sin `coordinateGetter`, una pulsación de
+  // flecha no sacaba la tarjeta de su columna y el intento de retroceso ni
+  // siquiera llegaba a producirse. La Fase 7.2 cerró el hallazgo y este test
+  // corre tal como se escribió. La regla también está cubierta sin navegador,
+  // en hooks/useSellerOrders.test.ts ("rechaza retroceder de …").
+  test("un pedido 'enviado' no puede retroceder a 'pagado': toast y la tarjeta no se mueve", async ({
     page,
     loginAs,
     sellerKanbanPage,

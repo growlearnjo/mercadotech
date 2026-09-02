@@ -6,7 +6,7 @@
 // accesibilidad aunque el mouse siga funcionando. `KeyboardSensor` está
 // activo desde la sesión 3.
 
-import type { Locator, Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 import type { OrderStatus } from "@/lib/constants/roles";
 
@@ -46,10 +46,20 @@ export class SellerKanbanPage {
     steps = 1,
   ): Promise<void> {
     const handle = this.handle(orderId);
+    // dnd-kit narra cada paso del arrastre en una región aria-live: es el
+    // único estado observable del drag y, de paso, lo que oye un lector de
+    // pantalla. Esperar a que el anuncio CAMBIE tras cada flecha es lo que
+    // vuelve determinista este movimiento: dnd-kit resuelve la columna de
+    // destino en el frame siguiente, así que un Space disparado de inmediato
+    // soltaba la tarjeta sobre la columna de origen. Una persona nunca teclea
+    // tan rápido; Playwright sí.
+    const anuncio = this.page.locator("[role='status']").first();
     await handle.focus();
     await this.page.keyboard.press("Space");
     for (let i = 0; i < steps; i += 1) {
+      const previo = (await anuncio.textContent()) ?? "";
       await this.page.keyboard.press(direction);
+      await expect(anuncio).not.toHaveText(previo);
     }
     await this.page.keyboard.press("Space");
   }

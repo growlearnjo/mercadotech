@@ -67,57 +67,36 @@ test.describe("Flujo del vendedor", () => {
 });
 
 /**
- * HALLAZGO DE ACCESIBILIDAD (Fase 6.6, decisión 9) — el camino de teclado del
- * kanban NO funciona en la práctica.
+ * HALLAZGO DE ACCESIBILIDAD DE LA FASE 6.6 — CERRADO EN LA FASE 7.2.
  *
- * QUÉ PASA: `OrdersKanban` registra el `KeyboardSensor` de dnd-kit pero NO le
- * pasa un `coordinateGetter`. El getter por defecto de la librería mueve la
- * tarjeta 25 px por pulsación de flecha, sin ninguna noción de columnas. Las
- * columnas miden `min-w-60` (240 px) más 12 px de separación, así que UNA
- * pulsación de ArrowRight deja la tarjeta dentro de su propia columna, y al
- * soltar dnd-kit anuncia literalmente:
+ * QUÉ PASABA: `OrdersKanban` registraba el `KeyboardSensor` de dnd-kit sin
+ * `coordinateGetter`. El getter por defecto mueve la tarjeta 25 px por
+ * pulsación, sin noción de columnas; como las columnas miden 240 px más 12 de
+ * separación, UNA pulsación de ArrowRight dejaba la tarjeta dentro de su
+ * propia columna. Hacían falta ~14 pulsaciones para cruzar.
  *
- *   "Draggable item c0000000-…-03 was dropped over droppable area pagado"
+ * EL FIX NO ERA DE UNA LÍNEA, como suponía la spec de la 7. Pasar
+ * `sortableKeyboardCoordinates` —lo que hace la galería— NO funciona aquí: ese
+ * getter arranca con `droppableContainers.get(active.id)` y abandona si no
+ * encuentra nada, y solo `useSortable` registra un elemento como draggable Y
+ * droppable a la vez. En el kanban las tarjetas son `useDraggable` y los
+ * droppables son las columnas, así que devolvía `undefined` y la tarjeta no se
+ * movía ni un pixel. `OrdersKanban` lleva ahora un getter propio de columnas,
+ * documentado en el componente.
  *
- * Comprobado empíricamente: con 14 pulsaciones seguidas (≈350 px) la tarjeta
- * sí cruza y el cambio persiste. Ningún usuario de teclado va a descubrir eso.
+ * Y EL TEST TAMPOCO ERA GRATIS: dnd-kit resuelve la columna de destino en el
+ * frame siguiente a la flecha, así que el Space de soltar —disparado por
+ * Playwright en el mismo milisegundo— soltaba sobre la columna de ORIGEN.
+ * `moveByKeyboard` espera a que cambie el anuncio aria-live de dnd-kit; el
+ * porqué está en el page object.
  *
- * POR QUÉ ES UN DEFECTO Y NO UNA LIMITACIÓN DEL TEST: el otro drag & drop del
- * proyecto, `SortableImageGallery`, SÍ pasa `coordinateGetter:
- * sortableKeyboardCoordinates`. La galería es accesible por teclado; el
- * kanban no. La diferencia es una línea.
- *
- * QUÉ NO SE HIZO: resolverlo con `mouse.down/move/up` está prohibido por la
- * decisión 9 — enmascararía justo lo que este test existe para detectar. Y
- * corregir `OrdersKanban.tsx` es cambio de producción, fuera del alcance de
- * una fase de testing.
- *
- * CUANDO SE CORRIJA: borrar el test que documenta el defecto y quitar el
- * `test.fixme` de los dos tests marcados (aquí y en seller-negative.spec.ts).
- * Están escritos completos y deberían pasar tal cual.
+ * Con eso, los dos tests que estaban en `test.fixme` desde la 6.6 (este y el
+ * de retroceso en seller-negative.spec.ts) pasan tal como fueron escritos. El
+ * tercer test —el que documentaba el defecto afirmando que una flecha NO
+ * cambia de columna— se borró: hoy afirma lo contrario de lo correcto.
  */
 test.describe("Flujo del vendedor — kanban por teclado", () => {
-  test("documenta el defecto: una pulsación de flecha NO cambia de columna", async ({
-    loginAs,
-    sellerKanbanPage,
-  }) => {
-    const pedido = SEED_ORDERS.pagadoDeSeller2;
-
-    await loginAs(SELLER2);
-    await sellerKanbanPage.goto();
-    await expect(sellerKanbanPage.cardInColumn(pedido, "pagado")).toBeVisible();
-
-    await sellerKanbanPage.moveByKeyboard(pedido, "ArrowRight");
-
-    // Comportamiento actual, revisar: la tarjeta se levanta y se suelta sobre
-    // SU MISMA columna. Este test se vuelve rojo el día que se agregue el
-    // `coordinateGetter`, que es exactamente cuando hay que borrarlo y
-    // habilitar el de abajo.
-    await expect(sellerKanbanPage.cardInColumn(pedido, "pagado")).toBeVisible();
-    await expect(sellerKanbanPage.cardInColumn(pedido, "enviado")).toHaveCount(0);
-  });
-
-  test.fixme(
+  test(
     "mueve el pedido 'pagado' a 'enviado' POR TECLADO y el cambio persiste",
     async ({ page, loginAs, sellerKanbanPage, ordersPage }) => {
       const pedido = SEED_ORDERS.pagadoDeSeller2;
