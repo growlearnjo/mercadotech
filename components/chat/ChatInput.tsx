@@ -35,6 +35,7 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
           }
         }}
         placeholder={placeholder ?? "Escribe tu pregunta…"}
+        data-testid="chat-input"
         disabled={disabled}
         rows={1}
         className="min-h-10 flex-1 resize-none"
@@ -45,6 +46,7 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
         onClick={submit}
         disabled={disabled || !value.trim()}
         aria-label="Enviar"
+        data-testid="chat-send"
       >
         <SendHorizontal className="size-4" aria-hidden="true" />
       </Button>

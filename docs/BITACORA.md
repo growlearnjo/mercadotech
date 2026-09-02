@@ -6,6 +6,333 @@ qué se dejó fuera a propósito.
 
 ---
 
+# Sesión 8 — Agente de voz, demo y cierre del curso (2026-09-02)
+
+La sesión que convierte el asistente de soporte en un agente: escucha, entiende
+qué le piden, usa herramientas reales de la plataforma y responde hablando —
+pidiendo permiso antes de actuar. Y antes de eso, ejecuta el go-live que la
+sesión 7 dejó escrito.
+
+**Volumen:** `git diff --stat 5d83f24..HEAD` → 33 archivos, +4 229 / −208 (sin
+contar el commit de cierre).
+
+**Titular:** el go-live **sí se ejecutó** y la tienda está publicada en
+https://mercadotech.vercel.app. La sesión costó cinco correcciones tras el
+primer paso por el validador, y las tres últimas enseñan más que el código que
+las provocó.
+
+---
+
+## Fase 8.0 — El go-live, por fin (commits `d0382ee`, `9ba718c`, `a2106b4`)
+
+Ejecutar `docs/DEPLOY.md` §2 tal como estaba escrito. La guía funcionó, pero el
+primer despliegue real destapó **cuatro cosas que ninguna prueba local podía
+ver**, todas ya incorporadas a la tabla de síntomas:
+
+### 1. Una migración rota que llevaba semanas en verde
+
+`supabase db push` falló con `42704: type "vector" does not exist` en la última
+migración. La causa: un `grant` que nombraba el tipo como `vector` a secas
+cuando pgvector se instala en el esquema `extensions`. Ese esquema está en el
+`search_path` del stack **local** pero no en el de Supabase **hosted**, así que
+el SQL pasaba en local y reventaba en producción.
+
+26 migraciones "verdes" y una rota, invisible hasta el primer despliegue. La
+migración hermana ya lo escribía bien (`extensions.vector`) desde la sesión 4:
+la corrección fue alinear una línea con su vecina.
+
+**Se editó la migración en vez de parchearla con otra nueva**, y la razón
+importa: nunca llegó a aplicarse en ningún remoto —Postgres revierte el archivo
+entero— y dejarla rota haría fallar el primer `db push` de cualquier proyecto
+futuro.
+
+### 2. Tres intentos perdidos por el formato de las claves
+
+Supabase cambió su sistema de claves y los proyectos nuevos traen las *legacy*
+(los JWT `eyJ…`) desactivadas. Pegar una da `401
+UNAUTHORIZED_INVALID_API_KEY`, y el mensaje **no menciona en ningún momento**
+que el problema sea el formato. Las buenas son `sb_publishable_…` y
+`sb_secret_…`.
+
+Queda en `DEPLOY.md` §1.1.b, con el `curl` que verifica una clave en dos
+segundos — antes de gastar un ciclo de build entero.
+
+### 3. Marcar como *Sensitive* una variable `NEXT_PUBLIC_`
+
+Vercel entrega las variables sensibles **solo en tiempo de ejecución**, y las
+`NEXT_PUBLIC_*` se necesitan **durante el build**. Al marcarlas se le pidieron
+dos cosas incompatibles y ganó la de seguridad: quedaron vacías y la página
+murió con `Application error: a client-side exception has occurred`.
+
+Se confirmó con evidencia dura: buscando la URL del proyecto dentro de los
+chunks servidos. No aparecía en ninguno.
+
+### 4. Los valores de local pegados en producción
+
+Con las variables ya cargadas, la web desplegada pedía sus datos a
+`http://127.0.0.1:54321` — la máquina **del visitante**. Síntoma: `CORS error`
+en todo, 0 bytes, en milisegundos.
+
+Lo desconcertante fue el mensaje en pantalla: *"Revisa tu conexión e inténtalo
+de nuevo"*, texto fijo del `ErrorState` que aparece ante cualquier fallo. La
+consola decía "CORS" y tampoco era eso. **Lo resolvió mirar la Request URL en
+la pestaña Network**: siempre preguntar a dónde va la petición, no solo qué
+error devolvió.
+
+### Lo que sí salió como estaba escrito
+
+* PR #2 (`deploy-smoke`) con los dos checks marcados **Required**, preview con
+  URL propia, merge que actualizó producción con el cambio del pie de página.
+* Branch protection activa. Con un matiz aprendido: **"Require approvals"
+  desmarcado**, porque GitHub no permite aprobar tus propios PR y con un solo
+  colaborador dejaría todo bloqueado para siempre.
+* Smoke test completo, ocho ✅, incluido `/soporte` citando la FAQ.
+
+### Extra no planeado: catálogo de demostración
+
+Producción nace vacía por diseño, pero una demo con el catálogo vacío no luce.
+`supabase/demo-catalog.sql` siembra 20 productos entre las 8 categorías, y
+`scripts/upload-catalog-images.mjs` sube sus fotos a Storage.
+
+**No es una migración y no debe moverse a `migrations/`**: son datos que
+dependen de un usuario que solo existe en producción; como migración reventaría
+por clave foránea en cada `supabase db reset` y dejaría el CI en rojo
+permanente. Resuelve el vendedor **por correo**, así que no lleva datos
+personales escritos en un repositorio público.
+
+---
+
+## Fase 8.1 — La capa de voz (commit `c35fe43`)
+
+Los oídos y la boca, sin cerebro: `lib/voice/` con las interfaces y su
+implementación sobre la Web Speech API, `lib/constants/voice.ts` y
+`hooks/useVoice.ts` con la máquina de estados.
+
+**La interfaz no es ceremonia:** enchufar mañana Whisper o ElevenLabs es
+escribir un archivo en esa carpeta con el mismo contrato. Ni la pantalla ni el
+agente se enteran.
+
+**Los cinco modos son UN estado y no cinco booleanos** porque son excluyentes:
+si el asistente habla no puede estar escuchando, o se oiría a sí mismo.
+
+### Dos cosas que solo aparecieron probando lo que sale mal
+
+Se probó denegar el permiso del micrófono, y con eso salieron dos defectos que
+el camino feliz jamás habría mostrado:
+
+1. **La promesa se colgaba para siempre.** Con el permiso denegado el navegador
+   dispara `onend` **inmediatamente**, antes de que nadie llame a `stop()`. Ese
+   evento se perdía y el `stop()` posterior esperaba algo que ya había pasado:
+   ni error, ni texto, ni nada — la interfaz congelada en "procesando". Lo
+   resuelve una marca (`sesionTerminada`) que permite responder aunque el
+   evento ya ocurriera.
+2. **El error llegaba tarde.** Los fallos de permiso ocurren *antes* de que el
+   micrófono se abra, así que el proveedor gana un `onError`: avisa cuando el
+   error ocurre en vez de guardarlo hasta que alguien pregunte. Sin eso, la
+   pantalla anunciaba una escucha que no existía.
+
+**Decisión de interacción:** el micrófono es un **interruptor** (una pulsación
+graba, otra envía) y no un mantener-pulsado. Dictar una consulta de soporte
+lleva su tiempo —hay que pensar qué pedido era— y el dedo se suelta a media
+palabra.
+
+---
+
+## Fase 8.2 — El orquestador (commit `989dc5f`)
+
+El cerebro, **100 % texto**. La frase va como cabecera del archivo y el código
+la cumple: *el agente no sabe que existe la voz*. Por eso el mismo orquestador
+serviría para WhatsApp sin tocarlo.
+
+Cada turno: resuelve una confirmación pendiente si la hay → clasifica la
+intención entre cinco etiquetas cerradas → ejecuta la herramienta → redacta
+corto. Sus herramientas **no son código nuevo**: llaman a `order.service`,
+`chat.service` y `ticket.service`, así que hereda gratis la RLS.
+
+### El problema de los UUID
+
+La spec original pedía "extraer el número de pedido del texto". Los ids son
+UUID de 36 caracteres: **nadie dicta `c0000000-0000-…`**. Se evaluaron cuatro
+caminos y se eligió resolver **por contexto**: "mi último pedido" → el más
+reciente; "el de la laptop" → coincidencia por producto; ante duda, enumera con
+fecha, producto y estado — datos que se pueden escuchar.
+
+El identificador es un problema del sistema, no del usuario. Trasladárselo sería
+diseñar al revés. *(La alternativa de darles códigos cortos y legibles quedó en
+el roadmap: es lo que hacen las tiendas reales.)*
+
+### Decisiones que costaría caro cambiar
+
+* **La confirmación viaja al cliente y vuelve** (`pending`) en vez de guardarse
+  en el servidor: tiene que sobrevivir entre dos peticiones HTTP y no merece una
+  tabla de sesiones con su expiración. No abre un agujero: quién puede crear el
+  ticket lo siguen decidiendo la sesión y la RLS.
+* **Confirmar se detecta con palabras, no preguntándole al modelo.** Es una
+  decisión con efectos y no debe depender de que un modelo probabilístico esté
+  de buen humor. Ante la duda, no se crea nada: volver a preguntar molesta,
+  crear un reclamo que nadie pidió es peor.
+* **`fuera_de_alcance` responde con texto fijo**, sin pasar por el modelo:
+  dejarlo redactar abre la puerta a que intente responder igualmente.
+
+### Un bug que solo el test podía ver
+
+```js
+/\búltim/.test("mi último pedido")   // false
+```
+
+En JavaScript `\b` marca la frontera entre `\w` y no-`\w`, y **`\w` no incluye
+las vocales acentuadas**. La expresión nunca coincidía, y *"¿en qué estado está
+mi último pedido?"* caía en la rama de ambigüedad. Ahora todo se normaliza sin
+tildes, lo que además cubre a quien escribe sin ellas — en un chat, la mayoría.
+
+---
+
+## Fase 8.3 — El centro de soporte con voz (commit `ab95faa`)
+
+`/soporte` con micrófono, transcripción en vivo, respuestas habladas y paridad
+total con el teclado.
+
+**La página es el único sitio donde la voz y el agente se encuentran**, y es
+deliberado: `useVoice` no sabe que existe un agente y `useSupportAgent` no sabe
+que existe un micrófono. Se componen en la página —regla del proyecto desde la
+sesión 3— y por eso la voz servirá para otra cosa sin arrastrar al agente.
+
+`ChatWindow` gana dos props opcionales en vez de duplicarse: dos copias de un
+chat se desincronizan a la primera corrección, y `/asistente` sigue idéntico.
+
+**Dos violaciones de capas heredadas, corregidas de paso** (las detectaron los
+propios greps del `CLAUDE.md`): `ChatHistoryEntry` vivía en `hooks/useChat` y lo
+importaban dos componentes, y `VoiceState` iba camino de repetir el error. Los
+dos se mudaron a `types/`, el terreno neutral donde componentes y hooks pueden
+encontrarse.
+
+---
+
+## Fase 8.4 — Calidad: cinco correcciones tras el validador
+
+Tests del orquestador (12) y de los tickets (8), E2E del soporte en modo texto
+(4), los greps de gobernanza y el validador.
+
+**El validador dio FALLIDA en la primera pasada.** Los cinco hallazgos:
+
+| # | Qué | Tipo |
+|---|---|---|
+| 1-2 | Dos tunables hardcodeados en el orquestador (`60`/`57` del asunto, `80` del recorte) | Regla del proyecto |
+| 3 | Los E2E del agente fallaban con la base recién reseteada | **Prerrequisito** que faltaba |
+| 4 | "Mis tickets" no se actualizaba tras crear uno | **Bug real** |
+| 5 | El test de la FAQ era **intermitente** | Test mal escrito |
+
+### El 3: un prerrequisito, no un fallo de código
+
+`supabase db reset` reconstruye las tablas y siembra la FAQ, pero **no genera
+sus embeddings** —eso cuesta llamadas al proveedor de IA y no cabe en un
+`.sql`—. Sin `npx tsx scripts/index-all.ts`, la búsqueda no encuentra nada y el
+agente responde, con toda corrección, que no halló información. El test se ponía
+rojo por datos que faltaban. Es el mismo desajuste que `npm run db:images`
+resuelve para las fotos, y ya está documentado en el spec y en `CLAUDE.md`.
+
+*(De camino apareció que `.env.local` tenía una `SUPABASE_SERVICE_ROLE_KEY` que
+no era la del stack local — se coló la de producción durante el go-live. Por eso
+el indexado fallaba con `permission denied`: Supabase la rechazaba y el script
+caía al rol `anon`.)*
+
+### El 4: el bug que ningún test unitario podía ver
+
+El agente creaba el ticket, respondía "listo, lo registré", y la lista de abajo
+seguía igual. **Las dos piezas funcionaban por separado** —crear un ticket y
+listar tickets estaban probados—; lo que fallaba era la **coordinación** entre
+ambas. `useMyTickets` cargaba al montar y nadie la volvía a pedir.
+
+Es exactamente para lo que existen los E2E, y justifica su coste.
+
+### El 5: el peor de los cinco, aunque parezca el más tonto
+
+El test de la FAQ afirmaba que la respuesta trae fuentes citadas. Pero eso
+depende de superar un **umbral de similitud**, que varía según cómo el modelo
+vectorice la pregunta: el mismo test pasaba y fallaba sin cambiar una línea.
+
+**Un test que falla al azar es peor que no tener test**: entrena a ignorar el
+rojo, y el día que se ponga rojo por un bug de verdad se descartará igual. Y
+además saltaba una regla que el proyecto ya tenía desde la sesión 6 —*los E2E no
+afirman respuestas de IA*—. Ahora afirma lo que sí es determinista: que el turno
+llegó y no reventó. Las fuentes siguen cubiertas en los tests unitarios, donde
+el modelo es un doble.
+
+**Segunda pasada del validador: APROBADA.** 313 unitarios, 17 E2E, lint, tipos,
+build y type-check del MCP en verde.
+
+---
+
+## Fase 8.5 — Demo y roadmap
+
+* **`docs/DEMO.md`** — guion de 10 minutos con datos exactos. Su pieza más
+  astuta: en el minuto 2 el comprador hace una compra real, y **ese** es el
+  pedido que el agente consulta en el minuto 7. Incluye plan B escrito para los
+  tres modos de fallar en vivo (micrófono, modelo, internet) y la checklist
+  manual de la voz.
+  **Aviso incorporado:** los 20 productos de producción **no están indexados**
+  —se sembraron después del reindexado—, así que reindexar es el primer paso
+  antes de cualquier demo.
+* **`docs/ROADMAP.md`** — diez entradas con esfuerzo estimado, abriendo con la
+  deuda ya medida del catálogo client-side.
+
+---
+
+## Decisiones ejercidas
+
+| # | Decisión | Por qué |
+|---|---|---|
+| 1 | **El agente no sabe que existe la voz** | Recibe texto, devuelve texto. Permite reutilizarlo en WhatsApp o móvil sin tocarlo, y hace que los E2E de texto cubran el mismo camino que recorrería dictando |
+| 2 | **Consultar es directo; escribir se pregunta** | Leer un pedido no compromete a nadie. Abrir un reclamo sí, y un agente que actúa sin permiso es peor que no tener agente |
+| 3 | **Pedidos por contexto, nunca por UUID** | Nadie dicta 36 caracteres. El identificador es problema del sistema |
+| 4 | **La voz no se automatiza en el CI** | No hay micrófono en un runner y `SpeechRecognition` no existe headless. Simularla verificaría nuestro propio simulador |
+| 5 | **Micrófono como interruptor**, no mantener pulsado | Dictar una consulta lleva tiempo y el dedo se suelta a media frase |
+| 6 | **Solo se responde en voz si se preguntó por voz** | Quien escribe no espera que la pantalla le conteste en voz alta |
+| 7 | **`/dev/voz` se conserva** — desviación de la spec | La spec pedía borrarla en la 8.4. Se decidió mantenerla como banco de pruebas. **Consecuencia asumida:** no está bajo `(shop)`, así que no exige sesión y queda accesible en producción. Anotada en el roadmap |
+
+---
+
+## Criterios de aceptación
+
+| Criterio | Estado | Evidencia |
+|---|---|---|
+| Hablar y obtener el estado real de un pedido, sin dictar id | ✅ | Probado en Chrome sobre el stack local |
+| El reclamo por voz exige y respeta la confirmación | ✅ | E2E `support-agent.spec.ts` en modo texto + prueba manual |
+| En Firefox la página funciona 100 % por teclado | ✅ | Probado: el botón se deshabilita y lo explica |
+| Ciclo de calidad completo en verde | ✅ | 313 unitarios · 17 E2E · lint · tipos · build · MCP · validador APROBADA |
+| Producción actualizada con el agente | ⏳ | Pendiente del merge de este PR |
+| Demo ejecutable sin improvisar | ✅ escrita · ⏳ ensayo | `docs/DEMO.md`; el ensayo cronometrado queda para el operador |
+
+---
+
+## Retrospectiva del curso
+
+Ocho sesiones planeadas, siete ejecutadas (la 1 nunca se corrió, y por eso no
+existe `docs/COSTOS.md`: **no se fabricó un registro de gasto retroactivo**).
+
+**Lo que mejor envejeció:** la decisión de la sesión 2 de que todo service
+reciba el cliente Supabase por parámetro. Parecía un detalle de estilo; acabó
+permitiendo 313 tests unitarios que corren en 3 segundos **sin Docker**, y que
+el agente de la sesión 8 reutilizara los services sin tocarlos.
+
+**Lo que más caro salió:** confiar en que lo verde en local está bien. Tres
+sesiones seguidas lo desmintieron — el lockfile que rompía `npm ci` en Linux
+(S6), la migración con el tipo sin calificar (S8), y las tres formas de medir
+mal el rendimiento (S7). **La lección común: local y producción no son el mismo
+sitio, y solo se descubre cruzando la frontera.**
+
+**Lo que no se hizo y estuvo bien no hacer:** pagos reales, un catálogo servido
+desde el servidor, y borrar el hallazgo de accesibilidad del kanban en vez de
+arreglarlo. Los tres están medidos o documentados, que es lo que los convierte
+en deuda gestionada y no en deuda olvidada.
+
+**El número que más dice del proyecto:** de las cinco correcciones de la Fase
+8.4, **tres no las encontró nadie leyendo código**. Las encontraron un test que
+falló, un validador que no acepta matices y una prueba manual de lo que sale
+mal.
+
+---
+
 # Sesión 7 — Performance, secretos y despliegue (2026-09-02)
 
 La mudanza del taller al local comercial. La tienda ya funcionaba y tenía red

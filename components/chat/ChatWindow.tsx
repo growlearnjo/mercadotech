@@ -7,7 +7,7 @@ import { ChatMessage } from "@/components/chat/ChatMessage";
 import { LoadingMessage } from "@/components/chat/LoadingMessage";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { Button } from "@/components/ui/button";
-import type { ChatHistoryEntry } from "@/hooks/useChat";
+import type { ChatHistoryEntry } from "@/types/chat";
 
 type ChatWindowProps = {
   messages: ChatHistoryEntry[];
@@ -18,6 +18,15 @@ type ChatWindowProps = {
   emptyTitle: string;
   emptyDescription?: string;
   inputPlaceholder?: string;
+  /**
+   * Nodo que se pinta junto al campo de texto — ahí vive el botón de voz
+   * (Fase 8.3). Es opcional para que /asistente siga exactamente igual: la
+   * alternativa era duplicar ChatWindow, y dos copias de un chat se
+   * desincronizan a la primera corrección.
+   */
+  inputAccessory?: React.ReactNode;
+  /** Se pinta bajo un mensaje que ejecutó una acción (ej. la tarjeta del ticket). */
+  renderAction?: (action: NonNullable<ChatHistoryEntry["action"]>) => React.ReactNode;
 };
 
 /** Compone la conversación completa: historial + input, con auto-scroll al último mensaje. */
@@ -29,6 +38,8 @@ export function ChatWindow({
   emptyTitle,
   emptyDescription,
   inputPlaceholder,
+  inputAccessory,
+  renderAction,
 }: ChatWindowProps) {
   const bottomRef = React.useRef<HTMLDivElement>(null);
 
@@ -61,7 +72,10 @@ export function ChatWindow({
         ) : (
           <div className="flex flex-col gap-3">
             {messages.map((message) => (
-              <ChatMessage key={message.id} message={message} />
+              <div key={message.id} className="flex flex-col">
+                <ChatMessage message={message} />
+                {message.action && renderAction ? renderAction(message.action) : null}
+              </div>
             ))}
             {loading ? <LoadingMessage /> : null}
             <div ref={bottomRef} />
@@ -69,8 +83,11 @@ export function ChatWindow({
         )}
       </div>
 
-      <div className="border-t border-border p-3">
-        <ChatInput onSend={onSend} disabled={loading} placeholder={inputPlaceholder} />
+      <div className="flex items-end gap-2 border-t border-border p-3">
+        <div className="min-w-0 flex-1">
+          <ChatInput onSend={onSend} disabled={loading} placeholder={inputPlaceholder} />
+        </div>
+        {inputAccessory}
       </div>
     </div>
   );

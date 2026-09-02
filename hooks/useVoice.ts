@@ -22,26 +22,12 @@ import { VOICE_LANG_DEFAULT } from "@/lib/constants/voice";
 import { createWebSpeechStt } from "@/lib/voice/web-speech-stt";
 import { createWebSpeechTts } from "@/lib/voice/web-speech-tts";
 import { VoiceError } from "@/lib/voice/types";
+import type { VoiceState } from "@/types/voice";
 
-/**
- * Los cinco modos de la voz.
- *
- * Se modela como UN estado y no como varios booleanos sueltos porque son
- * mutuamente excluyentes: si el asistente está hablando no puede estar
- * escuchando, o se oiría a sí mismo. Con `estaEscuchando` + `estaHablando` +
- * `estaProcesando` por separado, nada impide que dos queden en `true` a la vez
- * y la interfaz muestre algo imposible.
- *
- *   idle ──startListening──> listening ──stopListening──> processing
- *    ▲                                                        │
- *    └──────── speaking <────────── speak() ──────────────────┘
- */
-export type VoiceState =
-  | "idle"
-  | "listening"
-  | "processing"
-  | "speaking"
-  | "error";
+// El tipo vive en types/voice.ts porque VoiceButton también lo necesita y un
+// componente no puede importar de hooks/ (regla del CLAUDE.md). Se reexporta
+// para que quien use el hook no tenga que ir a buscarlo a otro archivo.
+export type { VoiceState };
 
 export type UseVoiceResult = {
   state: VoiceState;
