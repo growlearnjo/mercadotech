@@ -1,14 +1,11 @@
 "use client";
 
 import * as React from "react";
-import type { ChatMessage, ChatMode, ChatResult, ChatSource } from "@/types/chat";
+import type { ChatHistoryEntry, ChatMode, ChatResult } from "@/types/chat";
 
-export interface ChatHistoryEntry extends ChatMessage {
-  id: string;
-  sources?: ChatSource[];
-  /** true si este mensaje del asistente es el error inline de un fallo del servidor — la conversación nunca se rompe. */
-  isError?: boolean;
-}
+// El tipo se mudó a types/chat.ts en la sesión 8 (los componentes también lo
+// necesitan y no deben importar de hooks/). Se reexporta para no romper nada.
+export type { ChatHistoryEntry };
 
 /** Historial en memoria (no persiste, decisión de alcance de la spec), parametrizado por modo. */
 export function useChat(mode: ChatMode) {

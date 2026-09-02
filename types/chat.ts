@@ -44,3 +44,28 @@ export interface ChatResult {
   sources: ChatSource[];
   metadata: ChatResultMetadata;
 }
+
+/**
+ * Entrada del historial que pinta la interfaz.
+ *
+ * VIVE AQUÍ Y NO EN `hooks/useChat.ts`, donde nació en la sesión 4, porque
+ * `ChatMessage` y `ChatWindow` lo necesitan y la regla del CLAUDE.md es que un
+ * componente no dependa de un hook: si ambos lo necesitan, el tipo se muda a
+ * `types/`. `useChat` lo reexporta para no romper los imports existentes.
+ *
+ * La sesión 8 le suma `action`, porque el agente —a diferencia del chat de la
+ * sesión 4— puede hacer cosas además de responder, y la interfaz tiene que
+ * poder mostrar el ticket que acaba de crear.
+ */
+export interface ChatHistoryEntry extends ChatMessage {
+  id: string;
+  sources?: ChatSource[];
+  /** true si es el error inline de un fallo del servidor — la conversación nunca se rompe. */
+  isError?: boolean;
+  /** Acción con efectos ya ejecutada por el agente (sesión 8). */
+  action?: {
+    type: "ticket_creado";
+    ticketId: string;
+    subject: string;
+  };
+}

@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { SourcesList } from "@/components/chat/SourcesList";
-import type { ChatHistoryEntry } from "@/hooks/useChat";
+import type { ChatHistoryEntry } from "@/types/chat";
 
 type ChatMessageProps = {
   message: ChatHistoryEntry;
