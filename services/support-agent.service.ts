@@ -36,6 +36,8 @@ import {
   AGENT_MAX_HISTORY_TURNS,
   AGENT_MAX_REPLY_CHARS,
   AGENT_ORDER_CANDIDATES,
+  AGENT_REPLY_MIN_SENTENCE_CHARS,
+  TICKET_SUBJECT_MAX_CHARS,
 } from "@/lib/constants/support";
 import { ORDER_STATUS_LABELS } from "@/lib/constants/orders";
 import { ask } from "@/services/chat.service";
@@ -115,7 +117,9 @@ function recortar(texto: string): string {
   // que quedarse corto.
   const cortado = limpio.slice(0, AGENT_MAX_REPLY_CHARS);
   const ultimoPunto = cortado.lastIndexOf(".");
-  return ultimoPunto > 80 ? cortado.slice(0, ultimoPunto + 1) : `${cortado.trim()}…`;
+  return ultimoPunto > AGENT_REPLY_MIN_SENTENCE_CHARS
+    ? cortado.slice(0, ultimoPunto + 1)
+    : `${cortado.trim()}…`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -303,7 +307,10 @@ async function responderFaq(
 /** Asunto corto a partir del mensaje: es lo que verá quien atienda el ticket. */
 function proponerAsunto(mensaje: string, prefijo: string): string {
   const limpio = mensaje.trim().replace(/\s+/g, " ");
-  const corto = limpio.length > 60 ? `${limpio.slice(0, 57)}...` : limpio;
+  const corto =
+    limpio.length > TICKET_SUBJECT_MAX_CHARS
+      ? `${limpio.slice(0, TICKET_SUBJECT_MAX_CHARS - 3)}...`
+      : limpio;
   return `${prefijo}: ${corto}`;
 }
 

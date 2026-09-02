@@ -11,9 +11,39 @@
 // aserciones son sobre lo RECIÉN creado. Sin reset, la segunda corrida
 // arrastra datos de la primera.
 
+import { readFileSync } from "node:fs";
+
 import { defineConfig, devices } from "@playwright/test";
 
 const isCI = Boolean(process.env.CI);
+
+/**
+ * Carga `.env.local` en el proceso de Playwright (sesión 8).
+ *
+ * Next lee ese archivo para la APP, pero el runner de Playwright es otro
+ * proceso y no ve nada. Los specs del agente lo necesitan para una sola
+ * decisión: si hay token de IA, se prueban los turnos que dependen del modelo;
+ * si no, se saltan con su motivo. En CI el archivo no existe y esto no hace
+ * nada — que es exactamente lo que debe pasar, porque el pipeline corre sin
+ * ningún secreto a propósito.
+ */
+function cargarEnvLocal(): void {
+  try {
+    for (const linea of readFileSync(".env.local", "utf8").split("\n")) {
+      const limpia = linea.trim();
+      if (!limpia || limpia.startsWith("#")) continue;
+      const separador = limpia.indexOf("=");
+      if (separador < 1) continue;
+      const clave = limpia.slice(0, separador).trim();
+      if (process.env[clave]) continue;
+      process.env[clave] = limpia.slice(separador + 1).trim();
+    }
+  } catch {
+    // Sin `.env.local` no hay nada que cargar: es el caso del CI.
+  }
+}
+
+cargarEnvLocal();
 
 /** Puerto y URL de la app bajo prueba. Configurable para apuntar a otro entorno. */
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";

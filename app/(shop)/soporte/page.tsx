@@ -52,6 +52,7 @@ export default function SoportePage() {
     tickets,
     loading: ticketsLoading,
     error: ticketsError,
+    refetch: recargarTickets,
   } = useMyTickets(user?.id ?? null);
 
   /** El usuario silenció la lectura en voz alta; se respeta hasta que la reactive. */
@@ -67,11 +68,14 @@ export default function SoportePage() {
       const respuesta = await sendMessage(texto, porVoz ? "voz" : "chat");
       if (!respuesta) return;
       setUltimaRespuesta(respuesta);
+      // Si el turno creó un ticket, la lista de abajo está desactualizada: sin
+      // esto el agente decía "listo, lo registré" y la pantalla lo desmentía.
+      void recargarTickets();
       // Solo se habla si el usuario llegó hablando: quien escribe no espera
       // que la pantalla le conteste en voz alta, y menos en una oficina.
       if (porVoz && !mudo) await voz.speak(respuesta);
     },
-    [sendMessage, voz, mudo],
+    [sendMessage, voz, mudo, recargarTickets],
   );
 
   /** Interruptor del micrófono: una pulsación abre, la siguiente cierra y envía. */

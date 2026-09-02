@@ -89,3 +89,25 @@ export const INTENT_MAX_TOKENS = 12;
  * voz alta sería insufrible.
  */
 export const AGENT_ORDER_CANDIDATES = 5;
+
+/**
+ * Longitud máxima del asunto de un ticket, en caracteres.
+ *
+ * El asunto lo redacta el agente a partir de lo que dijo el usuario, y es lo
+ * ÚNICO que se ve en la lista de "Mis tickets" y en la bandeja de quien
+ * atiende. 60 caracteres entran completos en una línea sin cortarse en móvil;
+ * más largo se trunca visualmente y deja de ayudar a distinguir un reclamo de
+ * otro.
+ */
+export const TICKET_SUBJECT_MAX_CHARS = 60;
+
+/**
+ * Mínimo que debe quedar para cortar la respuesta en un punto y seguido.
+ *
+ * Al recortar a `AGENT_MAX_REPLY_CHARS` se prefiere terminar en el último
+ * punto, para no dejar una frase colgando. Pero si ese punto aparece muy al
+ * principio, cortar ahí devolvería una respuesta mutilada de dos palabras: por
+ * debajo de este umbral es mejor cortar en seco y marcarlo con puntos
+ * suspensivos.
+ */
+export const AGENT_REPLY_MIN_SENTENCE_CHARS = 80;

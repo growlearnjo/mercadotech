@@ -11,7 +11,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === "user";
 
   return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+    <div
+      className={cn("flex", isUser ? "justify-end" : "justify-start")}
+      data-testid={isUser ? "chat-message-user" : "chat-message-assistant"}
+    >
       <div
         className={cn(
           "max-w-[85%] rounded-lg px-3 py-2 text-sm",
